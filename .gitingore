@@ -1,0 +1,44 @@
+# Composer
+/vendor/
+composer.lock
+
+# WordPress
+wp-config.php
+wp-content/uploads/
+wp-content/cache/
+wp-content/backup-db/
+wp-content/advanced-cache.php
+wp-content/wp-cache-config.php
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.phpintel/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Testing
+/coverage/
+/.phpunit.result.cache
+/tests/tmp/
+
+# Build
+/build/
+/dist/
+*.zip
+
+# Logs
+*.log
+error_log
+debug.log
+
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+composer.lock

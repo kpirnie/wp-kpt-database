@@ -1,0 +1,41 @@
+<?php return array(
+    'root' => array(
+        'name' => 'kevinpirnie/wp-kpt-database',
+        'pretty_version' => 'dev-main',
+        'version' => 'dev-main',
+        'reference' => '765a9cdc0d9d18b52e4579431393f08e5e472ebf',
+        'type' => 'wordpress-plugin',
+        'install_path' => __DIR__ . '/../../',
+        'aliases' => array(),
+        'dev' => true,
+    ),
+    'versions' => array(
+        'kevinpirnie/kpt-database' => array(
+            'pretty_version' => 'v1.0.02',
+            'version' => '1.0.02.0',
+            'reference' => 'efce81049a81789714ee77d40bf3662cf017c345',
+            'type' => 'library',
+            'install_path' => __DIR__ . '/../kevinpirnie/kpt-database',
+            'aliases' => array(),
+            'dev_requirement' => false,
+        ),
+        'kevinpirnie/kpt-logger' => array(
+            'pretty_version' => 'v1.0.02',
+            'version' => '1.0.02.0',
+            'reference' => 'd3308dd181b0fd80543f62c8dbd7d2d64f2cefcc',
+            'type' => 'library',
+            'install_path' => __DIR__ . '/../kevinpirnie/kpt-logger',
+            'aliases' => array(),
+            'dev_requirement' => false,
+        ),
+        'kevinpirnie/wp-kpt-database' => array(
+            'pretty_version' => 'dev-main',
+            'version' => 'dev-main',
+            'reference' => '765a9cdc0d9d18b52e4579431393f08e5e472ebf',
+            'type' => 'wordpress-plugin',
+            'install_path' => __DIR__ . '/../../',
+            'aliases' => array(),
+            'dev_requirement' => false,
+        ),
+    ),
+);

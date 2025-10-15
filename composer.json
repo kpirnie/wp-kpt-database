@@ -1,0 +1,38 @@
+{
+    "name": "kevinpirnie/wp-kpt-database",
+    "description": "WordPress plugin that replaces core database interaction with KPT Database library",
+    "type": "wordpress-plugin",
+    "keywords": [
+        "wordpress",
+        "database",
+        "pdo",
+        "mysql",
+        "wpdb",
+        "plugin"
+    ],
+    "homepage": "https://github.com/kpirnie/wp-kpt-database",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Kevin Pirnie",
+            "email": "me@kpirnie.com",
+            "role": "Developer"
+        }
+    ],
+    "require": {
+        "php": ">=8.2",
+        "kevinpirnie/kpt-database": "^1.0",
+        "kevinpirnie/kpt-logger": "^1.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "KPT\\WordPress\\": "includes/"
+        }
+    },
+    "config": {
+        "sort-packages": true,
+        "optimize-autoloader": true
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}

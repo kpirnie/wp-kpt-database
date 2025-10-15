@@ -1,0 +1,40 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: write
+      
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: 8.2
+
+    - name: Install dependencies
+      run: composer install --no-dev --optimize-autoloader
+
+    - name: Create plugin zip
+      run: |
+        mkdir -p build
+        zip -r build/wp-kpt-database-${{ github.ref_name }}.zip . \
+          -x "*.git*" "*.github*" "*node_modules*" "*tests*" "*build*" \
+          "*.phpcs.xml" "*phpstan.neon" "*composer.json" "*composer.lock"
+
+    - name: Create Release
+      run: |
+        gh release create ${{ github.ref_name }} \
+          build/wp-kpt-database-${{ github.ref_name }}.zip \
+          --title "Release ${{ github.ref_name }}" \
+          --generate-notes
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

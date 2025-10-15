@@ -1,3 +1,98 @@
+# WP KPT Database
+
+A WordPress plugin that replaces the core WordPress database interaction layer (`wpdb`) with the modern, fluent KPT Database library built on PDO.
+
+## Description
+
+This plugin seamlessly integrates the KPT Database library into WordPress, replacing all `wpdb` database interactions with a more modern, secure, and feature-rich PDO-based solution while maintaining full backward compatibility with WordPress core and plugins.
+
+## Features
+
+- **Drop-in Replacement**: Seamlessly replaces WordPress `wpdb` class
+- **Full Backward Compatibility**: Works with all WordPress core functions and most plugins
+- **PDO-Based**: Modern PDO implementation with prepared statements
+- **Enhanced Security**: Built-in SQL injection protection
+- **Better Error Handling**: Comprehensive error logging and handling
+- **Performance**: Optimized database operations
+- **WordPress Coding Standards**: Fully compliant with WordPress coding standards
+- **Debug Logging**: Integrated with WordPress debug logging system
+
+## Requirements
+
+- WordPress 6.7 or higher
+- PHP 8.2 or higher
+- PDO extension with MySQL driver
+- MySQL 5.7+ or MariaDB 10.2+
+
+## Installation
+
+### Via Composer (Recommended)
+```bash
+composer require kevinpirnie/wp-kpt-database
+```
+
+### Manual Installation
+
+1. Download the plugin
+2. Extract the plugin files to `/wp-content/plugins/wp-kpt-database/`
+3. Run `composer install` in the plugin directory
+4. Activate the plugin through the 'Plugins' menu in WordPress
+
+## Configuration
+
+The plugin automatically uses your WordPress database configuration from `wp-config.php`. No additional configuration is required.
+
+### Debug Logging
+
+To enable debug logging, add these lines to your `wp-config.php`:
+```php
+define( 'WP_DEBUG', true );
+define( 'WP_DEBUG_LOG', true );
+```
+
+Debug and error logs will be written to `wp-content/debug.log`.
+
+## Usage
+
+Once activated, the plugin automatically replaces all WordPress database interactions. No code changes are required in your themes or plugins.
+
+### Compatibility
+
+The plugin maintains full compatibility with:
+
+- WordPress core functions (`get_posts`, `wp_insert_post`, etc.)
+- Plugin database operations
+- Theme database queries
+- WP-CLI commands
+- Custom database queries using `$wpdb`
+
+### Example Usage
+
+All standard WordPress database operations work as expected:
+```php
+global $wpdb;
+
+// Standard WordPress queries work without modification
+$results = $wpdb->get_results( "SELECT * FROM {$wpdb->posts} WHERE post_status = 'publish'" );
+
+$wpdb->insert(
+    $wpdb->prefix . 'my_table',
+    array(
+        'column1' => 'value1',
+        'column2' => 'value2'
+    ),
+    array( '%s', '%s' )
+);
+
+$wpdb->update(
+    $wpdb->prefix . 'my_table',
+    array( 'column1' => 'new_value' ),
+    array( 'id' => 1 ),
+    array( '%s' ),
+    array( '%d' )
+);
+```
+
 ## Supported wpdb Methods
 
 All standard `wpdb` methods are fully supported:
@@ -96,14 +191,6 @@ composer phpstan
 
 If you discover a security vulnerability, please email me@kpirnie.com.
 
-## Changelog
-
-### 1.0.0 (2024-01-15)
-- Initial release
-- Full wpdb replacement functionality
-- WordPress 6.7+ compatibility
-- PHP 8.2+ support
-
 ## Known Limitations
 
 - Custom wpdb extensions may require additional compatibility work
@@ -146,11 +233,11 @@ Built on top of the [KPT Database](https://github.com/kpirnie/kp-database) libra
 
 ## Support
 
-- [GitHub Issues](https://github.com/kpirnie/kpt-database-wordpress/issues)
-- [Documentation](https://github.com/kpirnie/kpt-database-wordpress)
+- [GitHub Issues](https://github.com/kpirnie/wp-kpt-database/issues)
+- [Documentation](https://github.com/kpirnie/wp-kpt-database)
 
 ## Links
 
-- [Plugin Homepage](https://github.com/kpirnie/kpt-database-wordpress)
+- [Plugin Homepage](https://github.com/kpirnie/wp-kpt-database)
 - [KPT Database Library](https://github.com/kpirnie/kp-database)
 - [WordPress Plugin Guidelines](https://developer.wordpress.org/plugins/)

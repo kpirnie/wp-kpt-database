@@ -1,0 +1,140 @@
+{
+    "packages": [
+        {
+            "name": "kevinpirnie/kpt-database",
+            "version": "v1.0.02",
+            "version_normalized": "1.0.02.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/kpirnie/kp-database.git",
+                "reference": "efce81049a81789714ee77d40bf3662cf017c345"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/kpirnie/kp-database/zipball/efce81049a81789714ee77d40bf3662cf017c345",
+                "reference": "efce81049a81789714ee77d40bf3662cf017c345",
+                "shasum": ""
+            },
+            "require": {
+                "ext-pdo": "*",
+                "kevinpirnie/kpt-logger": "^1.0",
+                "php": ">=8.1"
+            },
+            "require-dev": {
+                "phpstan/phpstan": "^1.10",
+                "phpunit/phpunit": "^10.0 || ^11.0",
+                "squizlabs/php_codesniffer": "^3.7"
+            },
+            "time": "2025-08-18T16:08:16+00:00",
+            "type": "library",
+            "installation-source": "dist",
+            "autoload": {
+                "psr-4": {
+                    "KPT\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Kevin Pirnie",
+                    "email": "me@kpirnie.com",
+                    "role": "Developer"
+                }
+            ],
+            "description": "A modern, fluent PHP database wrapper built on top of PDO, providing an elegant and secure way to interact with MySQL databases",
+            "homepage": "https://github.com/kpirnie/kp-database",
+            "keywords": [
+                "database",
+                "fluent",
+                "mysql",
+                "orm",
+                "pdo",
+                "query-builder",
+                "sql"
+            ],
+            "support": {
+                "issues": "https://github.com/kpirnie/kp-database/issues",
+                "source": "https://github.com/kpirnie/kp-database"
+            },
+            "funding": [
+                {
+                    "url": "https://github.com/sponsors/kpirnie",
+                    "type": "github"
+                }
+            ],
+            "install-path": "../kevinpirnie/kpt-database"
+        },
+        {
+            "name": "kevinpirnie/kpt-logger",
+            "version": "v1.0.02",
+            "version_normalized": "1.0.02.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/kpirnie/kp-logger.git",
+                "reference": "d3308dd181b0fd80543f62c8dbd7d2d64f2cefcc"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/kpirnie/kp-logger/zipball/d3308dd181b0fd80543f62c8dbd7d2d64f2cefcc",
+                "reference": "d3308dd181b0fd80543f62c8dbd7d2d64f2cefcc",
+                "shasum": ""
+            },
+            "require": {
+                "php": ">=8.0"
+            },
+            "require-dev": {
+                "phpstan/phpstan": "^1.10",
+                "phpunit/phpunit": "^10.0 || ^11.0",
+                "squizlabs/php_codesniffer": "^3.9"
+            },
+            "time": "2025-08-18T11:52:51+00:00",
+            "type": "library",
+            "installation-source": "dist",
+            "autoload": {
+                "psr-4": {
+                    "KPT\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Kevin Pirnie",
+                    "email": "me@kpirnie.com",
+                    "role": "Developer"
+                }
+            ],
+            "description": "Simple Universal Application Logger for PHP with configurable output destinations and four standard log levels",
+            "homepage": "https://github.com/kpirnie/kpt-logger",
+            "keywords": [
+                "debug",
+                "error",
+                "file-logging",
+                "info",
+                "logger",
+                "logging",
+                "stack-trace",
+                "system-log",
+                "warning"
+            ],
+            "support": {
+                "issues": "https://github.com/kpirnie/kpt-logger/issues",
+                "source": "https://github.com/kpirnie/kpt-logger"
+            },
+            "funding": [
+                {
+                    "url": "https://github.com/sponsors/kpirnie",
+                    "type": "github"
+                }
+            ],
+            "install-path": "../kevinpirnie/kpt-logger"
+        }
+    ],
+    "dev": true,
+    "dev-package-names": []
+}

@@ -1,0 +1,67 @@
+{
+    "name": "kevinpirnie/kpt-database",
+    "description": "A modern, fluent PHP database wrapper built on top of PDO, providing an elegant and secure way to interact with MySQL databases",
+    "type": "library",
+    "keywords": [
+        "database",
+        "pdo",
+        "mysql",
+        "fluent",
+        "orm",
+        "sql",
+        "query-builder"
+    ],
+    "homepage": "https://github.com/kpirnie/kp-database",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Kevin Pirnie",
+            "email": "me@kpirnie.com",
+            "role": "Developer"
+        }
+    ],
+    "require": {
+        "php": ">=8.1",
+        "ext-pdo": "*",
+        "kevinpirnie/kpt-logger": "^1.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.0 || ^11.0",
+        "phpstan/phpstan": "^1.10",
+        "squizlabs/php_codesniffer": "^3.7"
+    },
+    "autoload": {
+        "psr-4": {
+            "KPT\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "KPT\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit tests",
+        "test-coverage": "phpunit tests --coverage-html coverage --coverage-filter src",
+        "phpstan": "phpstan analyse src",
+        "cs-check": "phpcs src --standard=PSR12",
+        "cs-fix": "phpcbf src --standard=PSR12"
+    },
+    "config": {
+        "sort-packages": true,
+        "optimize-autoloader": true,
+        "preferred-install": "dist"
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true,
+    "support": {
+        "issues": "https://github.com/kpirnie/kp-database/issues",
+        "source": "https://github.com/kpirnie/kp-database"
+    },
+    "funding": [
+        {
+            "type": "github",
+            "url": "https://github.com/sponsors/kpirnie"
+        }
+    ]
+}
