@@ -66,7 +66,7 @@ class Plugin {
 		load_plugin_textdomain(
 			'kp-db',
 			false,
-			dirname( plugin_basename( kp_DB_PLUGIN_FILE ) ) . '/languages'
+			dirname( plugin_basename( KP_DB_PLUGIN_FILE ) ) . '/languages'
 		);
 	}
 
@@ -94,7 +94,7 @@ class Plugin {
 
 		// Check PHP version.
 		if ( version_compare( PHP_VERSION, '8.2', '<' ) ) {
-			deactivate_plugins( plugin_basename( kp_DB_PLUGIN_FILE ) );
+			deactivate_plugins( plugin_basename( KP_DB_PLUGIN_FILE ) );
 			wp_die(
 				esc_html__( 'This plugin requires PHP 8.2 or higher.', 'kp-db' ),
 				esc_html__( 'Plugin Activation Error', 'kp-db' ),
@@ -105,7 +105,7 @@ class Plugin {
 		// Check WordPress version.
 		global $wp_version;
 		if ( version_compare( $wp_version, '6.7', '<' ) ) {
-			deactivate_plugins( plugin_basename( kp_DB_PLUGIN_FILE ) );
+			deactivate_plugins( plugin_basename( KP_DB_PLUGIN_FILE ) );
 			wp_die(
 				esc_html__( 'This plugin requires WordPress 6.7 or higher.', 'kp-db' ),
 				esc_html__( 'Plugin Activation Error', 'kp-db' ),
@@ -115,7 +115,7 @@ class Plugin {
 
 		// Check if KPT Database library is available.
 		if ( ! class_exists( 'KPT\\Database' ) ) {
-			deactivate_plugins( plugin_basename( kp_DB_PLUGIN_FILE ) );
+			deactivate_plugins( plugin_basename( KP_DB_PLUGIN_FILE ) );
 			wp_die(
 				esc_html__( 'This plugin requires the KPT Database library. Please run composer install.', 'kp-db' ),
 				esc_html__( 'Plugin Activation Error', 'kp-db' ),

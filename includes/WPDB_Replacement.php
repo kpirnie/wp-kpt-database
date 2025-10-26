@@ -126,6 +126,9 @@ if( ! class_exists( 'WPDB_Replacement' ) ) {
 		 * @return mixed Property value
 		 */
 		public function __get( $name ) {
+			if ( isset( $this -> $name ) ) {
+				return $this -> $name;
+			}
 			return parent::__get( $name );
 		}
 		
@@ -136,6 +139,7 @@ if( ! class_exists( 'WPDB_Replacement' ) ) {
 		 * @param mixed $value Property value
 		 */
 		public function __set( $name, $value ) {
+			$this -> $name = $value;
 			parent::__set( $name, $value );
 		}
 		
@@ -146,7 +150,7 @@ if( ! class_exists( 'WPDB_Replacement' ) ) {
 		 * @return bool True if property is set, false otherwise
 		 */
 		public function __isset( $name ) {
-			return parent::__isset( $name );
+			return isset( $this -> $name ) || parent::__isset( $name );
 		}
 		
 		/**
@@ -155,14 +159,35 @@ if( ! class_exists( 'WPDB_Replacement' ) ) {
 		 * @param string $name Property name
 		 */
 		public function __unset( $name ) {
+			unset( $this -> $name );
 			parent::__unset( $name );
 		}
 		
 		/**
 		 * Set the database character set
 		 */
-		public function init_charset() {
-			parent::init_charset();
+		public function init_charset( ) {
+
+			// make sure we have our database functionality
+			if ( $this -> kpt_db ) {
+
+				// try to set the charset and collation
+				try {
+					$charset = $this -> charset ?: 'utf8mb4';
+					$collate = $this -> collate ?: 'utf8mb4_unicode_ci';
+					
+					// set the charset and collation
+					$this -> kpt_db -> raw( "SET NAMES {$charset} COLLATE {$collate}" );
+					$this -> kpt_db -> raw( "SET CHARACTER SET {$charset}" );
+				
+				// whoops... trap the error and log it
+				} catch ( \Exception $e ) {
+					Logger::error( 'Failed to set charset', [ 'error' => $e -> getMessage() ] );
+				}
+			}
+
+			// Call parent method for WordPress compatibility
+			parent::init_charset( );
 		}
 		
 		/**
@@ -173,6 +198,27 @@ if( ! class_exists( 'WPDB_Replacement' ) ) {
 		 * @param string|null $collate Optional collation
 		 */
 		public function set_charset( $dbh, $charset = null, $collate = null ) {
+
+			// Use provided charset or fall back to instance charset
+			$charset = $charset ?: $this -> charset;
+			$collate = $collate ?: $this -> collate;
+			
+			// Attempt to set charset using KPT Database
+			if ( $this -> kpt_db ) {
+				try {
+
+					// Set the character set and collation
+					$this -> kpt_db -> raw( "SET NAMES {$charset} COLLATE {$collate}" );
+
+					// Log successful charset change
+					Logger::debug( 'Charset set successfully', [ 'charset' => $charset, 'collate' => $collate ] );
+				} catch ( \Exception $e ) {
+					// Log error if charset setting fails
+					Logger::error( 'Failed to set charset', [ 'error' => $e -> getMessage() ] );
+				}
+			}
+			
+			// Call parent method for WordPress compatibility
 			parent::set_charset( $dbh, $charset, $collate );
 		}
 		
@@ -181,7 +227,41 @@ if( ! class_exists( 'WPDB_Replacement' ) ) {
 		 *
 		 * @param array $modes Optional array of SQL modes
 		 */
-		public function set_sql_mode( $modes = array() ) {
+		public function set_sql_mode( $modes = array( ) ) {
+		
+			// If no modes provided, use default WordPress-compatible modes
+			if ( empty( $modes ) ) {
+				$modes = array( );
+			}
+			
+			// Attempt to set SQL mode using KPT Database
+			if ( $this -> kpt_db ) {
+				try {
+
+					// Get current SQL mode if no modes specified
+					if ( empty( $modes ) ) {
+						$current_mode = $this -> kpt_db -> query( "SELECT @@SESSION.sql_mode" ) -> single( ) -> fetch( );
+						
+						// Log current mode retrieval
+						Logger::debug( 'Retrieved current SQL mode', [ 'mode' => $current_mode ] );
+					}
+					
+					// Convert modes array to comma-separated string
+					$mode_string = is_array( $modes ) ? implode( ',', $modes ) : $modes;
+					
+					// Set the SQL mode
+					$this -> kpt_db -> raw( "SET SESSION sql_mode = '{$mode_string}'" );
+					
+					// Log successful mode change
+					Logger::debug( 'SQL mode set successfully', [ 'modes' => $mode_string ] );
+				} catch ( \Exception $e ) {
+
+					// Log error if SQL mode setting fails
+					Logger::error( 'Failed to set SQL mode', [ 'error' => $e -> getMessage( ), 'modes' => $modes ] );
+				}
+			}
+			
+			// Call parent method for WordPress compatibility
 			parent::set_sql_mode( $modes );
 		}
 		
@@ -193,7 +273,58 @@ if( ! class_exists( 'WPDB_Replacement' ) ) {
 		 * @return string|WP_Error Old prefix or WP_Error on error
 		 */
 		public function set_prefix( $prefix, $set_table_names = true ) {
-			return parent::set_prefix( $prefix, $set_table_names );
+
+			// Validate prefix format (alphanumeric and underscore only)
+			if ( preg_match( '|[^a-z0-9_]|i', $prefix ) ) {
+
+				// Log invalid prefix error
+				Logger::error( 'Invalid table prefix format', [ 'prefix' => $prefix ] );
+				return new \WP_Error( 'invalid_db_prefix', 'Invalid database prefix' );
+			}
+			
+			// Store old prefix for return value
+			$old_prefix = is_multisite() ? '' : $this->prefix;
+			
+			// Log prefix change attempt
+			Logger::debug( 'Attempting to set table prefix', [ 
+				'old_prefix' => $old_prefix, 
+				'new_prefix' => $prefix,
+				'set_table_names' => $set_table_names
+			] );
+			
+			// Set the base prefix
+			$this->base_prefix = $prefix;
+			$this->prefix = $this->base_prefix;
+			
+			// Set table names if requested
+			if ( $set_table_names ) {
+
+				// Verify prefix exists in database
+				try {
+					$query = "SHOW TABLES LIKE ?";
+					$like_pattern = $prefix . '%';
+					
+					$results = $this->kpt_db->query( $query )->bind( [ $like_pattern ] )->fetch();
+					
+					if ( ! $results ) {
+						// Log warning if no tables found with this prefix
+						Logger::warning( 'No tables found with specified prefix', [ 'prefix' => $prefix ] );
+					}
+					
+					// Set table names
+					$this->set_table_names();
+					
+					// Log success
+					Logger::debug( 'Table prefix set successfully', [ 'new_prefix' => $this->prefix ] );
+					
+				} catch ( \Exception $e ) {
+					// Log error
+					Logger::error( 'Failed to set table prefix', [ 'error' => $e->getMessage() ] );
+					return new \WP_Error( 'db_prefix_error', $e->getMessage() );
+				}
+			}
+			
+			return $old_prefix;
 		}
 		
 		/**
@@ -204,8 +335,50 @@ if( ! class_exists( 'WPDB_Replacement' ) ) {
 		 * @return int Previous blog ID
 		 */
 		public function set_blog_id( $blog_id, $network_id = 0 ) {
-			return parent::set_blog_id( $blog_id, $network_id );
+
+			// Store old blog ID for return value
+			$old_blog_id = $this->blogid;
+			
+			// Validate blog ID is numeric
+			if ( ! is_numeric( $blog_id ) ) {
+				// Log invalid blog ID error
+				Logger::error( 'Invalid blog ID provided', [ 'blog_id' => $blog_id ] );
+				return $old_blog_id;
+			}
+			
+			// Log blog ID change attempt
+			Logger::debug( 'Attempting to set blog ID', [ 
+				'old_blog_id' => $old_blog_id, 
+				'new_blog_id' => $blog_id,
+				'network_id' => $network_id
+			] );
+			
+			// Set the blog ID
+			$this->blogid = (int) $blog_id;
+			
+			// Set the network ID if provided
+			if ( ! empty( $network_id ) ) {
+				$this->siteid = (int) $network_id;
+			}
+			
+			// Update the table prefix for this blog
+			try {
+				$this->prefix = $this->get_blog_prefix( $blog_id );
+				
+				// Log result of blog ID change
+				Logger::debug( 'Blog ID set successfully', [ 
+					'blog_id' => $this->blogid,
+					'prefix' => $this->prefix
+				] );
+				
+			} catch ( \Exception $e ) {
+				// Log error
+				Logger::error( 'Failed to update prefix for blog', [ 'error' => $e->getMessage() ] );
+			}
+			
+			return $old_blog_id;
 		}
+		
 		
 		/**
 		 * Get the blog prefix
@@ -214,8 +387,50 @@ if( ! class_exists( 'WPDB_Replacement' ) ) {
 		 * @return string Blog prefix
 		 */
 		public function get_blog_prefix( $blog_id = null ) {
-			return parent::get_blog_prefix( $blog_id );
+
+			// Use current blog ID if none provided
+			if ( is_null( $blog_id ) ) {
+				$blog_id = $this->blogid;
+			}
+			
+			// Log blog prefix retrieval attempt
+			Logger::debug( 'Getting blog prefix', [ 'blog_id' => $blog_id ] );
+			
+			// For single site or blog_id 0/1, return base prefix
+			if ( ! is_multisite() || $blog_id == 0 || $blog_id == 1 ) {
+				$prefix = $this->base_prefix;
+			} else {
+				// Query the database for the blog prefix in multisite
+				try {
+					$prefix = $this->base_prefix . $blog_id . '_';
+					
+					// Verify the blog exists by checking if tables exist
+					$query = "SHOW TABLES LIKE ?";
+					$like_pattern = $prefix . '%';
+					
+					$results = $this->kpt_db->query( $query )->bind( [ $like_pattern ] )->fetch();
+					
+					// If no tables found, fall back to base prefix
+					if ( ! $results ) {
+						$prefix = $this->base_prefix;
+					}
+					
+				} catch ( \Exception $e ) {
+					// Log error and fall back to parent method
+					Logger::error( 'Failed to get blog prefix', [ 'error' => $e->getMessage() ] );
+					return parent::get_blog_prefix( $blog_id );
+				}
+			}
+			
+			// Log retrieved prefix
+			Logger::debug( 'Blog prefix retrieved', [ 
+				'blog_id' => $blog_id,
+				'prefix' => $prefix
+			] );
+			
+			return $prefix;
 		}
+		
 		
 		/**
 		 * Get a list of WordPress tables
@@ -226,7 +441,64 @@ if( ! class_exists( 'WPDB_Replacement' ) ) {
 		 * @return array List of tables
 		 */
 		public function tables( $scope = 'all', $prefix = true, $blog_id = 0 ) {
-			return parent::tables( $scope, $prefix, $blog_id );
+
+			// Log table list retrieval attempt
+			Logger::debug( 'Getting table list', [ 
+				'scope' => $scope,
+				'prefix' => $prefix,
+				'blog_id' => $blog_id
+			] );
+			
+			// Get the appropriate prefix
+			$table_prefix = $prefix ? $this->get_blog_prefix( $blog_id ) : '';
+			
+			// Query database for tables using KPT Database
+			try {
+				// Get all tables from current database
+				$query = "SHOW TABLES LIKE ?";
+				$like_pattern = $table_prefix . '%';
+				
+				$results = $this->kpt_db->query( $query )->bind( [ $like_pattern ] )->fetch();
+				
+				// Extract table names from results
+				$tables = array();
+				if ( $results ) {
+					foreach ( $results as $result ) {
+						$table_array = (array) $result;
+						$table_name = reset( $table_array );
+						
+						// Apply scope filtering
+						if ( $scope === 'all' ) {
+							$tables[] = $table_name;
+						} elseif ( $scope === 'global' ) {
+							if ( in_array( str_replace( $table_prefix, '', $table_name ), $this->global_tables ) ) {
+								$tables[] = $table_name;
+							}
+						} elseif ( $scope === 'ms_global' ) {
+							if ( in_array( str_replace( $table_prefix, '', $table_name ), $this->ms_global_tables ) ) {
+								$tables[] = $table_name;
+							}
+						} elseif ( $scope === 'blog' ) {
+							if ( ! in_array( str_replace( $table_prefix, '', $table_name ), array_merge( $this->global_tables, $this->ms_global_tables ) ) ) {
+								$tables[] = $table_name;
+							}
+						}
+					}
+				}
+				
+				// Log retrieved table count
+				Logger::debug( 'Table list retrieved', [ 
+					'scope' => $scope,
+					'table_count' => count( $tables )
+				] );
+				
+				return $tables;
+				
+			} catch ( \Exception $e ) {
+				// Log error and fall back to parent method
+				Logger::error( 'Failed to retrieve table list', [ 'error' => $e->getMessage() ] );
+				return parent::tables( $scope, $prefix, $blog_id );
+			}
 		}
 		
 		/**
@@ -237,121 +509,73 @@ if( ! class_exists( 'WPDB_Replacement' ) ) {
 		 * @return bool True on success, false on failure
 		 */
 		public function select( $db, $dbh = null ) {
-			return parent::select( $db, $dbh );
-		}
-		
-		/**
-		 * Weak escape using addslashes
-		 *
-		 * @param string|array $data Data to escape
-		 * @return string|array Escaped data
-		 */
-		public function _weak_escape( $data ) {
-			return parent::_weak_escape( $data );
-		}
-		
-		/**
-		 * Real escape using mysqli_real_escape_string or mysql_real_escape_string
-		 *
-		 * @param string $data Data to escape
-		 * @return string Escaped data
-		 */
-		public function _real_escape( $data ) {
-			return parent::_real_escape( $data );
-		}
-		
-		/**
-		 * Escape data for use in a MySQL query
-		 *
-		 * @param string|array $data Data to escape
-		 * @return string|array Escaped data
-		 */
-		public function _escape( $data ) {
-			return parent::_escape( $data );
-		}
-		
-		/**
-		 * Escape data for use in a MySQL query
-		 *
-		 * @param string|array $data Data to escape
-		 * @return string|array Escaped data
-		 */
-		public function escape( $data ) {
-			return parent::escape( $data );
-		}
-		
-		/**
-		 * Escape data by reference for use in a MySQL query
-		 *
-		 * @param string $data Data to escape
-		 * @return string Escaped data
-		 */
-		public function escape_by_ref( &$data ) {
-			return parent::escape_by_ref( $data );
-		}
-		
-		/**
-		 * Prepare a SQL query for safe execution
-		 *
-		 * @param string $query Query statement with sprintf()-like placeholders
-		 * @param mixed ...$args Values to substitute into the query
-		 * @return string|void Sanitized query string, if there is a query to prepare
-		 */
-		public function prepare( $query, ...$args ) {
-			return parent::prepare( $query, ...$args );
-		}
-		
-		/**
-		 * First half of escaping for LIKE special characters % and _ before preparing for SQL
-		 *
-		 * @param string $text Text to escape
-		 * @return string Escaped text
-		 */
-		public function esc_like( $text ) {
-			return parent::esc_like( $text );
-		}
-		
-		/**
-		 * Print SQL/DB error
-		 *
-		 * @param string $str Error message
-		 * @return void|false Void if error is displayed, false if not
-		 */
-		public function print_error( $str = '' ) {
-			return parent::print_error( $str );
-		}
-		
-		/**
-		 * Enable or disable error displaying
-		 *
-		 * @param bool $show Whether to show errors. Default true
-		 */
-		public function show_errors( $show = true ) {
-			parent::show_errors( $show );
-		}
-		
-		/**
-		 * Disable error displaying
-		 */
-		public function hide_errors() {
-			parent::hide_errors();
-		}
-		
-		/**
-		 * Enable or disable error suppression
-		 *
-		 * @param bool $suppress Whether to suppress errors. Default true
-		 * @return bool Previous suppress setting
-		 */
-		public function suppress_errors( $suppress = true ) {
-			return parent::suppress_errors( $suppress );
+
+			// Validate database name
+			if ( empty( $db ) ) {
+				
+				// Log invalid database name
+				Logger::error( 'Empty database name provided to select()' );
+				return false;
+			}
+			
+			// Log database selection attempt
+			Logger::debug( 'Attempting to select database', [ 'database' => $db ] );
+			
+			// Attempt to select database using KPT Database
+			try {
+
+				// Use the raw query method to execute USE statement
+				$this -> kpt_db -> raw( "USE `{$db}`" );
+				
+				// Update the current database property
+				$this->dbname = $db;
+				
+				// Log successful database selection
+				Logger::debug( 'Database selected successfully', [ 'database' => $db ] );
+				
+				return true;
+				
+			} catch ( \Exception $e ) {
+				// Log error
+				Logger::error( 'Failed to select database', [ 
+					'database' => $db,
+					'error' => $e -> getMessage( ) 
+				] );
+				
+				return false;
+			}
 		}
 		
 		/**
 		 * Flush cached query results
 		 */
 		public function flush() {
-			parent::flush();
+
+			// Log cache flush
+			Logger::debug( 'Flushing query cache' );
+			
+			// Clear stored query results
+			$this -> last_result = array();
+			$this -> col_info = null;
+			$this -> last_query = null;
+			$this -> rows_affected = 0;
+			$this -> num_rows = 0;
+			
+			// Reset KPT Database state
+			if ( $this -> kpt_db ) {
+				try {
+					$this -> kpt_db -> reset( );
+					Logger::debug( 'KPT Database reset successfully' );
+				} catch ( \Exception $e ) {
+					Logger::error( 'Failed to reset KPT Database', [ 'error' => $e->getMessage() ] );
+				}
+			}
+			
+			// Call parent flush for additional cleanup
+			parent::flush( );
+			
+			// Log flush completion
+			Logger::debug( 'Query cache flushed successfully' );
 		}
 		
 		/**
@@ -361,27 +585,57 @@ if( ! class_exists( 'WPDB_Replacement' ) ) {
 		 * @return bool True on success, false on failure
 		 */
 		public function db_connect( $allow_bail = true ) {
-			return parent::db_connect( $allow_bail );
-		}
-		
-		/**
-		 * Parse the DB_HOST setting to interpret it for mysqli_real_connect
-		 *
-		 * @param string $host Database host
-		 * @return array|false Array containing host, port, socket, and is_ipv6, or false on failure
-		 */
-		public function parse_db_host( $host ) {
-			return parent::parse_db_host( $host );
-		}
-		
-		/**
-		 * Check that the connection to the database is still up
-		 *
-		 * @param bool $allow_bail Optional. Allows the function to bail. Default true
-		 * @return bool True if the connection is up, false otherwise
-		 */
-		public function check_connection( $allow_bail = true ) {
-			return parent::check_connection( $allow_bail );
+
+			// Log connection attempt
+			Logger::debug( 'db_connect called', [ 'allow_bail' => $allow_bail ] );
+			
+			// Check if KPT Database is already connected
+			if ( $this -> kpt_db ) {
+				try {
+					// Test connection with a simple query
+					$this -> kpt_db->raw( "SELECT 1" );
+					
+					// Connection is alive
+					Logger::debug( 'KPT Database connection already established' );
+					return true;
+					
+				} catch ( \Exception $e ) {
+					// Connection failed, attempt to reconnect
+					Logger::warning( 'Existing connection failed, attempting reconnect', [ 
+						'error' => $e->getMessage() 
+					] );
+				}
+			}
+			
+			// Attempt to initialize/reconnect KPT Database
+			try {
+				$this -> init_kpt_database();
+				
+				// Verify connection with test query
+				$this -> kpt_db -> raw( "SELECT 1" );
+				
+				// Log successful connection
+				Logger::debug( 'Database connection established successfully' );
+				
+				return true;
+				
+			} catch ( \Exception $e ) {
+				// Log connection failure
+				Logger::error( 'Database connection failed', [ 
+					'error' => $e -> getMessage( ),
+					'allow_bail' => $allow_bail
+				] );
+				
+				// Bail if allowed
+				if ( $allow_bail ) {
+					wp_die( 
+						esc_html( $e -> getMessage( ) ),
+						esc_html__( 'Database Connection Error', 'kp-db' )
+					);
+				}
+				
+				return false;
+			}
 		}
 		
 		/**
@@ -391,7 +645,80 @@ if( ! class_exists( 'WPDB_Replacement' ) ) {
 		 * @return int|bool Number of rows affected/selected or false on error
 		 */
 		public function query( $query ) {
-			return parent::query( $query );
+
+			// Validate query
+			if ( empty( $query ) ) {
+				Logger::error( 'query called with empty query string' );
+				return false;
+			}
+			
+			// Store the query for WordPress compatibility
+			$this -> last_query = $query;
+			$this -> last_error = '';
+			
+			// Log query attempt
+			Logger::debug( 'Executing query', [ 'query' => substr( $query, 0, 100 ) ] );
+			
+			try {
+				// Determine query type
+				$query_type = strtoupper( substr( trim( $query ), 0, 6 ) );
+				
+				// Execute based on query type
+				if ( $query_type === 'SELECT' || $query_type === 'SHOW' || $query_type === 'DESCRI' ) {
+				
+					// SELECT, SHOW, DESCRIBE queries
+					$result = $this -> kpt_db -> query( $query ) -> fetch( );
+					
+					// Store results for WordPress compatibility
+					$this -> last_result = is_array( $result ) ? $result : ( $result ? [ $result ] : [] );
+					$this -> num_rows = count( $this -> last_result );
+					
+					// Log successful select
+					Logger::debug( 'SELECT query executed', [ 'num_rows' => $this -> num_rows ] );
+					
+					return $this -> num_rows;
+					
+				} else {
+
+					// INSERT, UPDATE, DELETE, etc.
+					$affected = $this -> kpt_db -> query( $query ) -> execute( );
+					
+					// Store affected rows
+					$this->rows_affected = is_int( $affected ) ? $affected : 0;
+					
+					// Store last insert ID for INSERT queries
+					if ( $query_type === 'INSERT' ) {
+						$this -> insert_id = $this -> kpt_db->getLastId();
+						Logger::debug( 'INSERT query executed', [ 
+							'insert_id' => $this -> insert_id,
+							'rows_affected' => $this -> rows_affected
+						] );
+					} else {
+						Logger::debug( "{$query_type} query executed", [ 
+							'rows_affected' => $this -> rows_affected
+						] );
+					}
+					
+					return $affected;
+				}
+				
+			} catch ( \Exception $e ) {
+				// Store error message
+				$this->last_error = $e -> getMessage( );
+				
+				// Log error
+				Logger::error( 'Query execution failed', [ 
+					'error' => $e -> getMessage( ),
+					'query' => substr( $query, 0, 200 )
+				] );
+				
+				// Print error if show_errors is enabled
+				if ( $this -> show_errors ) {
+					$this -> print_error( $this -> last_error );
+				}
+				
+				return false;
+			}
 		}
 		
 		/**
@@ -401,49 +728,58 @@ if( ! class_exists( 'WPDB_Replacement' ) ) {
 		 * @return resource|bool Query result resource or false on failure
 		 */
 		public function _do_query( $query ) {
-			return parent::_do_query( $query );
-		}
-		
-		/**
-		 * Log query data
-		 *
-		 * @param string $query SQL query
-		 * @param float $query_time Query execution time
-		 * @param string $query_callstack Query callstack
-		 * @param float $query_start Query start time
-		 * @param array $query_result Query result
-		 */
-		public function log_query( $query, $query_time, $query_callstack, $query_start, $query_result ) {
-			parent::log_query( $query, $query_time, $query_callstack, $query_start, $query_result );
-		}
-		
-		/**
-		 * Generate and return a placeholder escape string
-		 *
-		 * @return string Placeholder escape string
-		 */
-		public function placeholder_escape() {
-			return parent::placeholder_escape();
-		}
-		
-		/**
-		 * Add placeholder escape strings to a query
-		 *
-		 * @param string $query Query to add placeholder escapes to
-		 * @return string Query with placeholder escapes added
-		 */
-		public function add_placeholder_escape( $query ) {
-			return parent::add_placeholder_escape( $query );
-		}
-		
-		/**
-		 * Remove placeholder escape strings from a query
-		 *
-		 * @param string $query Query to remove placeholder escapes from
-		 * @return string Query with placeholder escapes removed
-		 */
-		public function remove_placeholder_escape( $query ) {
-			return parent::remove_placeholder_escape( $query );
+
+			// Log internal query execution
+			Logger::debug( '_do_query called', [ 'query' => substr( $query, 0, 100 ) ] );
+			
+			// Validate query
+			if ( empty( $query ) ) {
+				Logger::error( '_do_query called with empty query' );
+				return false;
+			}
+			
+			try {
+				// Determine query type
+				$query_type = strtoupper( substr( trim( $query ), 0, 6 ) );
+				
+				// Execute using KPT Database
+				if ( $query_type === 'SELECT' || $query_type === 'SHOW' || $query_type === 'DESCRI' ) {
+					// For SELECT-type queries, return result object
+					$result = $this->kpt_db->query( $query )->fetch();
+					
+					// Store in format compatible with wpdb
+					$this->last_result = is_array( $result ) ? $result : ( $result ? [ $result ] : [] );
+					
+					// Return a mock result resource (true for success)
+					return true;
+					
+				} else {
+					// For INSERT/UPDATE/DELETE, execute and return success
+					$affected = $this->kpt_db->query( $query )->execute();
+					
+					// Store affected rows and insert ID
+					$this->rows_affected = is_int( $affected ) ? $affected : 0;
+					
+					if ( $query_type === 'INSERT' ) {
+						$this->insert_id = $this->kpt_db->getLastId();
+					}
+					
+					// Return true for success
+					return $affected !== false;
+				}
+				
+			} catch ( \Exception $e ) {
+				// Log error
+				Logger::error( '_do_query failed', [ 
+					'error' => $e->getMessage(),
+					'query' => substr( $query, 0, 200 )
+				] );
+				
+				// Store error
+				$this->last_error = $e->getMessage();
+				
+				return false;
+			}
 		}
 		
 		/**
@@ -455,7 +791,62 @@ if( ! class_exists( 'WPDB_Replacement' ) ) {
 		 * @return int|false Number of rows affected or false on error
 		 */
 		public function insert( $table, $data, $format = null ) {
-			return parent::insert( $table, $data, $format );
+
+			// Validate inputs
+			if ( empty( $table ) || empty( $data ) || ! is_array( $data ) ) {
+				Logger::error( 'insert called with invalid parameters', [ 
+					'table' => $table,
+					'data_type' => gettype( $data )
+				] );
+				return false;
+			}
+			
+			// Log insert attempt
+			Logger::debug( 'Attempting INSERT', [ 
+				'table' => $table,
+				'columns' => array_keys( $data )
+			] );
+			
+			try {
+				// Build column and placeholder lists
+				$columns = array_keys( $data );
+				$values = array_values( $data );
+				$placeholders = array_fill( 0, count( $values ), '?' );
+				
+				// Build INSERT query
+				$query = sprintf(
+					"INSERT INTO `%s` (`%s`) VALUES (%s)",
+					$table,
+					implode( '`, `', $columns ),
+					implode( ', ', $placeholders )
+				);
+				
+				// Execute query using KPT Database
+				$result = $this->kpt_db->query( $query )->bind( $values )->execute();
+				
+				// Store last insert ID
+				$this->insert_id = $this->kpt_db->getLastId();
+				$this->rows_affected = is_int( $result ) ? 1 : 0;
+				
+				// Log success
+				Logger::debug( 'INSERT successful', [ 
+					'table' => $table,
+					'insert_id' => $this->insert_id
+				] );
+				
+				return $this->rows_affected;
+				
+			} catch ( \Exception $e ) {
+				// Log error
+				Logger::error( 'INSERT failed', [ 
+					'table' => $table,
+					'error' => $e->getMessage()
+				] );
+				
+				$this->last_error = $e->getMessage();
+				
+				return false;
+			}
 		}
 		
 		/**
@@ -467,20 +858,64 @@ if( ! class_exists( 'WPDB_Replacement' ) ) {
 		 * @return int|false Number of rows affected or false on error
 		 */
 		public function replace( $table, $data, $format = null ) {
-			return parent::replace( $table, $data, $format );
-		}
-		
-		/**
-		 * Helper function for insert and replace
-		 *
-		 * @param string $table Table name
-		 * @param array $data Data to insert (in column => value pairs)
-		 * @param array|string|null $format Optional. An array of formats or a format string. Default null
-		 * @param string $type Optional. Type of operation (INSERT or REPLACE). Default 'INSERT'
-		 * @return int|false Number of rows affected or false on error
-		 */
-		public function _insert_replace_helper( $table, $data, $format = null, $type = 'INSERT' ) {
-			return parent::_insert_replace_helper( $table, $data, $format, $type );
+
+			// Validate inputs
+			if ( empty( $table ) || empty( $data ) || ! is_array( $data ) ) {
+				Logger::error( 'replace called with invalid parameters', [ 
+					'table' => $table,
+					'data_type' => gettype( $data )
+				] );
+				return false;
+			}
+			
+			// Log replace attempt
+			Logger::debug( 'Attempting REPLACE', [ 
+				'table' => $table,
+				'columns' => array_keys( $data )
+			] );
+			
+			try {
+				// Build column and placeholder lists
+				$columns = array_keys( $data );
+				$values = array_values( $data );
+				$placeholders = array_fill( 0, count( $values ), '?' );
+				
+				// Build REPLACE query
+				$query = sprintf(
+					"REPLACE INTO `%s` (`%s`) VALUES (%s)",
+					$table,
+					implode( '`, `', $columns ),
+					implode( ', ', $placeholders )
+				);
+				
+				// Execute query using KPT Database
+				$result = $this->kpt_db->query( $query )->bind( $values )->execute();
+				
+				// Store affected rows (REPLACE returns rows affected)
+				$this->rows_affected = is_int( $result ) ? $result : 0;
+				
+				// Store last insert ID if available
+				$this->insert_id = $this->kpt_db->getLastId();
+				
+				// Log success
+				Logger::debug( 'REPLACE successful', [ 
+					'table' => $table,
+					'rows_affected' => $this->rows_affected
+				] );
+				
+				return $this->rows_affected;
+				
+			} catch ( \Exception $e ) {
+				// Log error
+				Logger::error( 'REPLACE failed', [ 
+					'table' => $table,
+					'error' => $e->getMessage()
+				] );
+				
+				$this->last_error = $e->getMessage();
+				
+				return false;
+			}
 		}
 		
 		/**
@@ -494,7 +929,77 @@ if( ! class_exists( 'WPDB_Replacement' ) ) {
 		 * @return int|false Number of rows affected or false on error
 		 */
 		public function update( $table, $data, $where, $format = null, $where_format = null ) {
-			return parent::update( $table, $data, $where, $format, $where_format );
+
+			// Validate inputs
+			if ( empty( $table ) || empty( $data ) || ! is_array( $data ) || empty( $where ) || ! is_array( $where ) ) {
+				Logger::error( 'update called with invalid parameters', [ 
+					'table' => $table,
+					'data_type' => gettype( $data ),
+					'where_type' => gettype( $where )
+				] );
+				return false;
+			}
+			
+			// Log update attempt
+			Logger::debug( 'Attempting UPDATE', [ 
+				'table' => $table,
+				'columns' => array_keys( $data ),
+				'where_columns' => array_keys( $where )
+			] );
+			
+			try {
+				// Build SET clause
+				$set_parts = array();
+				$set_values = array();
+				foreach ( $data as $column => $value ) {
+					$set_parts[] = "`{$column}` = ?";
+					$set_values[] = $value;
+				}
+				
+				// Build WHERE clause
+				$where_parts = array();
+				$where_values = array();
+				foreach ( $where as $column => $value ) {
+					$where_parts[] = "`{$column}` = ?";
+					$where_values[] = $value;
+				}
+				
+				// Combine all values
+				$all_values = array_merge( $set_values, $where_values );
+				
+				// Build UPDATE query
+				$query = sprintf(
+					"UPDATE `%s` SET %s WHERE %s",
+					$table,
+					implode( ', ', $set_parts ),
+					implode( ' AND ', $where_parts )
+				);
+				
+				// Execute query using KPT Database
+				$result = $this->kpt_db->query( $query )->bind( $all_values )->execute();
+				
+				// Store affected rows
+				$this->rows_affected = is_int( $result ) ? $result : 0;
+				
+				// Log success
+				Logger::debug( 'UPDATE successful', [ 
+					'table' => $table,
+					'rows_affected' => $this->rows_affected
+				] );
+				
+				return $this->rows_affected;
+				
+			} catch ( \Exception $e ) {
+				// Log error
+				Logger::error( 'UPDATE failed', [ 
+					'table' => $table,
+					'error' => $e->getMessage()
+				] );
+				
+				$this->last_error = $e->getMessage();
+				
+				return false;
+			}
 		}
 		
 		/**
@@ -506,52 +1011,63 @@ if( ! class_exists( 'WPDB_Replacement' ) ) {
 		 * @return int|false Number of rows affected or false on error
 		 */
 		public function delete( $table, $where, $where_format = null ) {
-			return parent::delete( $table, $where, $where_format );
-		}
-		
-		/**
-		 * Process data for insertion/update based on table fields
-		 *
-		 * @param string $table Table name
-		 * @param array $data Data to process
-		 * @param array|string $format Format for data
-		 * @return array|false Processed data or false on error
-		 */
-		public function process_fields( $table, $data, $format ) {
-			return parent::process_fields( $table, $data, $format );
-		}
-		
-		/**
-		 * Process format for data
-		 *
-		 * @param array $data Data to format
-		 * @param array|string $format Format for data
-		 * @return array Processed formats
-		 */
-		public function process_field_formats( $data, $format ) {
-			return parent::process_field_formats( $data, $format );
-		}
-		
-		/**
-		 * Process field charsets for data
-		 *
-		 * @param array $data Data to process
-		 * @param string $table Table name
-		 * @return array Processed data with charset information
-		 */
-		public function process_field_charsets( $data, $table ) {
-			return parent::process_field_charsets( $data, $table );
-		}
-		
-		/**
-		 * Process field lengths for data
-		 *
-		 * @param array $data Data to process
-		 * @param string $table Table name
-		 * @return array|WP_Error Processed data or WP_Error on failure
-		 */
-		public function process_field_lengths( $data, $table ) {
-			return parent::process_field_lengths( $data, $table );
+
+			// Validate inputs
+			if ( empty( $table ) || empty( $where ) || ! is_array( $where ) ) {
+				Logger::error( 'delete called with invalid parameters', [ 
+					'table' => $table,
+					'where_type' => gettype( $where )
+				] );
+				return false;
+			}
+			
+			// Log delete attempt
+			Logger::debug( 'Attempting DELETE', [ 
+				'table' => $table,
+				'where_columns' => array_keys( $where )
+			] );
+			
+			try {
+				// Build WHERE clause
+				$where_parts = array();
+				$where_values = array();
+				foreach ( $where as $column => $value ) {
+					$where_parts[] = "`{$column}` = ?";
+					$where_values[] = $value;
+				}
+				
+				// Build DELETE query
+				$query = sprintf(
+					"DELETE FROM `%s` WHERE %s",
+					$table,
+					implode( ' AND ', $where_parts )
+				);
+				
+				// Execute query using KPT Database
+				$result = $this->kpt_db->query( $query )->bind( $where_values )->execute();
+				
+				// Store affected rows
+				$this->rows_affected = is_int( $result ) ? $result : 0;
+				
+				// Log success
+				Logger::debug( 'DELETE successful', [ 
+					'table' => $table,
+					'rows_affected' => $this->rows_affected
+				] );
+				
+				return $this->rows_affected;
+				
+			} catch ( \Exception $e ) {
+				// Log error
+				Logger::error( 'DELETE failed', [ 
+					'table' => $table,
+					'error' => $e->getMessage()
+				] );
+				
+				$this->last_error = $e->getMessage();
+				
+				return false;
+			}
 		}
 		
 		/**
@@ -561,126 +1077,58 @@ if( ! class_exists( 'WPDB_Replacement' ) ) {
 		 * @return string|WP_Error Processed query or WP_Error on failure
 		 */
 		public function pre_query( $query ) {
-			return parent::pre_query( $query );
+
+			// Log pre-query processing
+			Logger::debug( 'pre_query called', [ 'query' => substr( $query, 0, 100 ) ] );
+			
+			// Validate query
+			if ( empty( $query ) ) {
+				Logger::error( 'pre_query called with empty query' );
+				return new \WP_Error( 'empty_query', 'Query string is empty' );
+			}
+			
+			try {
+				// Strip invalid text if configured
+				if ( $this->check_current_query ) {
+					$query = $this->strip_invalid_text_from_query( $query );
+				}
+				
+				// Check for field length issues
+				$table = $this->get_table_from_query( $query );
+				if ( $table ) {
+					// Extract data from INSERT/UPDATE queries for validation
+					$query_type = strtoupper( substr( trim( $query ), 0, 6 ) );
+					
+					if ( in_array( $query_type, array( 'INSERT', 'UPDATE', 'REPLAC' ) ) ) {
+						// Let parent handle complex field validation
+						$processed = parent::pre_query( $query );
+						
+						if ( is_wp_error( $processed ) ) {
+							Logger::error( 'pre_query validation failed', [ 
+								'error' => $processed->get_error_message() 
+							] );
+						}
+						
+						return $processed;
+					}
+				}
+				
+				// Log successful pre-query processing
+				Logger::debug( 'pre_query processing complete' );
+				
+				return $query;
+				
+			} catch ( \Exception $e ) {
+				// Log error
+				Logger::error( 'pre_query failed', [ 
+					'error' => $e->getMessage(),
+					'query' => substr( $query, 0, 200 )
+				] );
+				
+				return new \WP_Error( 'query_processing_error', $e->getMessage() );
+			}
 		}
-		
-		/**
-		 * Check if a string is ASCII
-		 *
-		 * @param string $data String to check
-		 * @return bool True if ASCII, false otherwise
-		 */
-		public function check_ascii( $data ) {
-			return parent::check_ascii( $data );
-		}
-		
-		/**
-		 * Check if the table has a safe collation
-		 *
-		 * @param string $table Table name
-		 * @return bool True if collation is safe, false otherwise
-		 */
-		public function check_safe_collation( $table ) {
-			return parent::check_safe_collation( $table );
-		}
-		
-		/**
-		 * Strip invalid text from data
-		 *
-		 * @param array $data Data to strip
-		 * @return array Stripped data
-		 */
-		public function strip_invalid_text( $data ) {
-			return parent::strip_invalid_text( $data );
-		}
-		
-		/**
-		 * Strip invalid text from a query
-		 *
-		 * @param string $query Query to strip
-		 * @return string Stripped query
-		 */
-		public function strip_invalid_text_from_query( $query ) {
-			return parent::strip_invalid_text_from_query( $query );
-		}
-		
-		/**
-		 * Get the character set for a table
-		 *
-		 * @param string $table Table name
-		 * @return string|WP_Error Character set or WP_Error on failure
-		 */
-		public function get_table_charset( $table ) {
-			return parent::get_table_charset( $table );
-		}
-		
-		/**
-		 * Get the character set for a column
-		 *
-		 * @param string $table Table name
-		 * @param string $column Column name
-		 * @return string|false|WP_Error Character set or false/WP_Error on failure
-		 */
-		public function get_col_charset( $table, $column ) {
-			return parent::get_col_charset( $table, $column );
-		}
-		
-		/**
-		 * Get the length of a column
-		 *
-		 * @param string $table Table name
-		 * @param string $column Column name
-		 * @return array|false|WP_Error Column length information or false/WP_Error on failure
-		 */
-		public function get_col_length( $table, $column ) {
-			return parent::get_col_length( $table, $column );
-		}
-		
-		/**
-		 * Check the database version
-		 *
-		 * @return WP_Error|void WP_Error if version check fails
-		 */
-		public function check_database_version() {
-			return parent::check_database_version();
-		}
-		
-		/**
-		 * Check if the database supports collation
-		 *
-		 * @return bool True if collation is supported, false otherwise
-		 */
-		public function supports_collation() {
-			return parent::supports_collation();
-		}
-		
-		/**
-		 * Get the name of the caller function/method
-		 *
-		 * @return string|array Caller information
-		 */
-		public function get_caller() {
-			return parent::get_caller();
-		}
-		
-		/**
-		 * Get the database version
-		 *
-		 * @return string|null Database version or null on failure
-		 */
-		public function db_version() {
-			return parent::db_version();
-		}
-		
-		/**
-		 * Get database server info
-		 *
-		 * @return string Database server info
-		 */
-		public function db_server_info() {
-			return parent::db_server_info();
-		}
-		
+
 		/**
 		 * Get multiple rows from the database
 		 *
@@ -689,7 +1137,72 @@ if( ! class_exists( 'WPDB_Replacement' ) ) {
 		 * @return array|object|null Database query results or null on failure
 		 */
 		public function get_results( $query = null, $output = OBJECT ) {
-			return parent::get_results( $query, $output );
+
+			// If query provided, execute it first
+			if ( $query ) {
+				// Log query execution
+				Logger::debug( 'get_results executing query', [ 
+					'query' => substr( $query, 0, 100 ),
+					'output' => $output
+				] );
+				
+				$this->query( $query );
+			}
+			
+			// If no results from last query, return null
+			if ( ! $this->last_result ) {
+				Logger::debug( 'get_results: no results available' );
+				return null;
+			}
+			
+			// Log results retrieval
+			Logger::debug( 'get_results returning results', [ 
+				'num_rows' => count( $this->last_result ),
+				'output_type' => $output
+			] );
+			
+			// Convert results based on output type
+			try {
+				$results = array();
+				
+				foreach ( $this->last_result as $row ) {
+					switch ( $output ) {
+						case ARRAY_A:
+							// Convert to associative array
+							$results[] = (array) $row;
+							break;
+							
+						case ARRAY_N:
+							// Convert to numeric array
+							$results[] = array_values( (array) $row );
+							break;
+							
+						case OBJECT_K:
+							// Use first column as key
+							$row_array = (array) $row;
+							$key = array_shift( $row_array );
+							$results[ $key ] = (object) $row_array;
+							break;
+							
+						case OBJECT:
+						default:
+							// Return as object (default)
+							$results[] = $row;
+							break;
+					}
+				}
+				
+				return $results;
+				
+			} catch ( \Exception $e ) {
+				// Log error
+				Logger::error( 'get_results failed to format output', [ 
+					'error' => $e->getMessage(),
+					'output' => $output
+				] );
+				
+				return null;
+			}
 		}
 		
 		/**
@@ -701,7 +1214,66 @@ if( ! class_exists( 'WPDB_Replacement' ) ) {
 		 * @return array|object|null|void Database query result or null on failure
 		 */
 		public function get_row( $query = null, $output = OBJECT, $y = 0 ) {
-			return parent::get_row( $query, $output, $y );
+
+			// If query provided, execute it first
+			if ( $query ) {
+				// Log query execution
+				Logger::debug( 'get_row executing query', [ 
+					'query' => substr( $query, 0, 100 ),
+					'output' => $output,
+					'offset' => $y
+				] );
+				
+				$this->query( $query );
+			}
+			
+			// If no results from last query, return null
+			if ( ! $this->last_result ) {
+				Logger::debug( 'get_row: no results available' );
+				return null;
+			}
+			
+			// Check if requested row exists
+			if ( ! isset( $this->last_result[ $y ] ) ) {
+				Logger::debug( 'get_row: requested row offset does not exist', [ 'offset' => $y ] );
+				return null;
+			}
+			
+			// Get the row at offset y
+			$row = $this->last_result[ $y ];
+			
+			// Log row retrieval
+			Logger::debug( 'get_row returning row', [ 
+				'offset' => $y,
+				'output_type' => $output
+			] );
+			
+			// Convert row based on output type
+			try {
+				switch ( $output ) {
+					case ARRAY_A:
+						// Convert to associative array
+						return (array) $row;
+						
+					case ARRAY_N:
+						// Convert to numeric array
+						return array_values( (array) $row );
+						
+					case OBJECT:
+					default:
+						// Return as object (default)
+						return $row;
+				}
+				
+			} catch ( \Exception $e ) {
+				// Log error
+				Logger::error( 'get_row failed to format output', [ 
+					'error' => $e->getMessage(),
+					'output' => $output
+				] );
+				
+				return null;
+			}
 		}
 		
 		/**
@@ -712,7 +1284,61 @@ if( ! class_exists( 'WPDB_Replacement' ) ) {
 		 * @return array Database query results
 		 */
 		public function get_col( $query = null, $x = 0 ) {
-			return parent::get_col( $query, $x );
+
+			// If query provided, execute it first
+			if ( $query ) {
+				// Log query execution
+				Logger::debug( 'get_col executing query', [ 
+					'query' => substr( $query, 0, 100 ),
+					'column_offset' => $x
+				] );
+				
+				$this->query( $query );
+			}
+			
+			// If no results from last query, return empty array
+			if ( ! $this->last_result ) {
+				Logger::debug( 'get_col: no results available' );
+				return array();
+			}
+			
+			// Log column retrieval
+			Logger::debug( 'get_col extracting column', [ 
+				'num_rows' => count( $this->last_result ),
+				'column_offset' => $x
+			] );
+			
+			// Extract the specified column from all rows
+			try {
+				$column = array();
+				
+				foreach ( $this->last_result as $row ) {
+					// Convert row to array
+					$row_array = (array) $row;
+					$values = array_values( $row_array );
+					
+					// Get the column at offset x if it exists
+					if ( isset( $values[ $x ] ) ) {
+						$column[] = $values[ $x ];
+					}
+				}
+				
+				// Log success
+				Logger::debug( 'get_col returning column', [ 
+					'column_count' => count( $column )
+				] );
+				
+				return $column;
+				
+			} catch ( \Exception $e ) {
+				// Log error
+				Logger::error( 'get_col failed', [ 
+					'error' => $e->getMessage(),
+					'column_offset' => $x
+				] );
+				
+				return array();
+			}
 		}
 		
 		/**
@@ -724,101 +1350,97 @@ if( ! class_exists( 'WPDB_Replacement' ) ) {
 		 * @return string|null Database query result or null on failure
 		 */
 		public function get_var( $query = null, $x = 0, $y = 0 ) {
-			return parent::get_var( $query, $x, $y );
+
+			// If query provided, execute it first
+			if ( $query ) {
+				// Log query execution
+				Logger::debug( 'get_var executing query', [ 
+					'query' => substr( $query, 0, 100 ),
+					'column_offset' => $x,
+					'row_offset' => $y
+				] );
+				
+				$this->query( $query );
+			}
+			
+			// If no results from last query, return null
+			if ( ! $this->last_result ) {
+				Logger::debug( 'get_var: no results available' );
+				return null;
+			}
+			
+			// Check if requested row exists
+			if ( ! isset( $this->last_result[ $y ] ) ) {
+				Logger::debug( 'get_var: requested row offset does not exist', [ 'offset' => $y ] );
+				return null;
+			}
+			
+			// Get the row at offset y
+			$row = $this->last_result[ $y ];
+			
+			// Convert row to array and get values
+			$row_array = (array) $row;
+			$values = array_values( $row_array );
+			
+			// Check if requested column exists
+			if ( ! isset( $values[ $x ] ) ) {
+				Logger::debug( 'get_var: requested column offset does not exist', [ 'offset' => $x ] );
+				return null;
+			}
+			
+			// Get the value
+			$value = $values[ $x ];
+			
+			// Log variable retrieval
+			Logger::debug( 'get_var returning value', [ 
+				'column_offset' => $x,
+				'row_offset' => $y,
+				'value_type' => gettype( $value )
+			] );
+			
+			return $value;
 		}
-		
-		/**
-		 * Get column metadata
-		 *
-		 * @param string $info_type Optional. Type of info to retrieve. Default 'name'
-		 * @param int $col_offset Optional. Column offset. Default -1
-		 * @return mixed Column metadata
-		 */
-		public function get_col_info( $info_type = 'name', $col_offset = -1 ) {
-			return parent::get_col_info( $info_type, $col_offset );
-		}
-		
-		/**
-		 * Start the timer for query timing
-		 */
-		public function timer_start() {
-			parent::timer_start();
-		}
-		
-		/**
-		 * Stop the timer and return the elapsed time
-		 *
-		 * @return float Elapsed time in seconds
-		 */
-		public function timer_stop() {
-			return parent::timer_stop();
-		}
-		
-		/**
-		 * Wraps errors in a nice header and footer and dies
-		 *
-		 * @param string $message Error message
-		 * @param string $error_code Optional. Error code. Default '500'
-		 * @return void|false Void if error is displayed, false if not
-		 */
-		public function bail( $message, $error_code = '500' ) {
-			return parent::bail( $message, $error_code );
-		}
-		
+
 		/**
 		 * Close the current database connection
 		 *
 		 * @return bool True on success, false on failure
 		 */
-		public function close() {
-			return parent::close();
-		}
-		
-		/**
-		 * Whether the database supports a particular capability
-		 *
-		 * @param string $db_cap Database capability to check
-		 * @return bool True if capability is supported, false otherwise
-		 */
-		public function has_cap( $db_cap ) {
-			return parent::has_cap( $db_cap );
-		}
-		
-		/**
-		 * Get the database character collate
-		 *
-		 * @return string Database character collate
-		 */
-		public function get_charset_collate() {
-			return parent::get_charset_collate();
-		}
-		
-		/**
-		 * Determine the best charset and collation to use
-		 *
-		 * @param string $charset Character set
-		 * @param string $collate Collation
-		 * @return array Array with 'charset' and 'collate' keys
-		 */
-		public function determine_charset( $charset, $collate ) {
-			return parent::determine_charset( $charset, $collate );
-		}
-		
-		/**
-		 * Get the name of the table from a query
-		 *
-		 * @param string $query SQL query
-		 * @return string|false Table name or false on failure
-		 */
-		public function get_table_from_query( $query ) {
-			return parent::get_table_from_query( $query );
-		}
-		
-		/**
-		 * Load column metadata
-		 */
-		public function load_col_info() {
-			parent::load_col_info();
+		public function close( ) {
+
+			// Log connection close attempt
+			Logger::debug( 'Attempting to close database connection' );
+			
+			try {
+				// Reset KPT Database
+				if ( $this->kpt_db ) {
+					$this->kpt_db->reset();
+					
+					// Set to null to allow garbage collection
+					$this->kpt_db = null;
+					
+					Logger::debug( 'KPT Database connection closed successfully' );
+				}
+				
+				// Clear all stored data
+				$this->flush();
+				
+				// Call parent close method for compatibility
+				$result = parent::close();
+				
+				// Log successful close
+				Logger::debug( 'Database connection closed', [ 'result' => $result ] );
+				
+				return $result;
+				
+			} catch ( \Exception $e ) {
+				// Log error
+				Logger::error( 'Failed to close database connection', [ 
+					'error' => $e->getMessage() 
+				] );
+				
+				return false;
+			}
 		}
 
 	}
