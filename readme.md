@@ -1,4 +1,4 @@
-# WP KPT Database
+# KP Database
 
 A WordPress plugin that replaces the core WordPress database interaction layer (`wpdb`) with the modern, fluent KPT Database library built on PDO.
 

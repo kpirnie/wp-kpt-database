@@ -42,6 +42,11 @@ if (! class_exists('Database')) {
         protected int $fetch_mode = \PDO::FETCH_OBJ;
         protected bool $fetch_single = false;
 
+        // optimization properties
+        protected object $db_settings;
+        protected bool $is_connected = false;
+        protected string $driver = 'mysql';
+
         /**
          * __construct
          *
@@ -60,36 +65,184 @@ if (! class_exists('Database')) {
             // validate settings first
             self::validateSettings($db_settings);
 
-            // try to establish database connection
+            $this->db_settings = $db_settings;
+            $this->driver = $db_settings->driver ?? 'mysql';
+
+            // Apply driver defaults
+            $this->applyDriverDefaults();
+
+            // Lazy connection - only connect when needed for performance
+            Logger::debug("Database Constructor Completed Successfully");
+        }
+
+        /**
+         * applyDriverDefaults - Apply database-specific defaults
+         *
+         * @return void
+         */
+        protected function applyDriverDefaults(): void
+        {
+            $defaults = match ($this->driver) {
+                'mysql' => ['charset' => 'utf8mb4', 'collation' => 'utf8mb4_unicode_ci', 'port' => 3306],
+                'pgsql' => ['charset' => 'UTF8', 'port' => 5432],
+                'sqlsrv' => ['charset' => 'UTF-8', 'port' => 1433],
+                'oci' => ['charset' => 'AL32UTF8', 'port' => 1521],
+                'sqlite' => [],
+                default => []
+            };
+
+            foreach ($defaults as $key => $value) {
+                if (!isset($this->db_settings->$key)) {
+                    $this->db_settings->$key = $value;
+                }
+            }
+        }
+
+        /**
+         * connect - Lazy connection with optimized setup
+         *
+         * @return void
+         * @throws \Exception
+         */
+        protected function connect(): void
+        {
+            if ($this->is_connected) {
+                return;
+            }
+
             try {
-                // build the dsn string
-                $dsn = "mysql:host={$db_settings -> server};dbname={$db_settings -> schema}";
+                // Build DSN based on driver
+                $dsn = $this->buildDsn();
 
-                // setup the PDO connection
-                $this -> db_handle = new \PDO($dsn, $db_settings -> username, $db_settings -> password);
+                // Create PDO with optimized attributes
+                $this->db_handle = new \PDO(
+                    $dsn,
+                    $this->db_settings->username ?? '',
+                    $this->db_settings->password ?? '',
+                    $this->getOptimizedAttributes()
+                );
 
-                // Set character encoding
-                $this -> db_handle -> exec("SET NAMES {$db_settings -> charset} COLLATE {$db_settings -> collation}");
-                $this -> db_handle -> exec("SET CHARACTER SET {$db_settings -> charset}");
-                $this -> db_handle -> exec("SET collation_connection = {$db_settings -> collation}");
+                // Driver-specific configuration
+                $this->configureDriver();
 
-                // set pdo attributes
-                $this -> db_handle -> setAttribute(\PDO::ATTR_EMULATE_PREPARES, false);
-                $this -> db_handle -> setAttribute(\PDO::ATTR_PERSISTENT, true);
-                $this -> db_handle -> setAttribute(\PDO::MYSQL_ATTR_USE_BUFFERED_QUERY, true);
-                $this -> db_handle -> setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+                $this->is_connected = true;
 
-                // debug logging
-                Logger::debug("Database Constructor Completed Successfully");
-
-            // whoopsie...
+                Logger::debug("Database Connection Established");
             } catch (\Exception $e) {
-                // error logging
-                Logger::error("Database Constructor Failed", [
-                    'message' => $e -> getMessage(),
-                ]);
-
+                Logger::error("Database Connection Failed", ['message' => $e->getMessage()]);
                 throw $e;
+            }
+        }
+
+        /**
+         * buildDsn - Build DSN string for different database drivers
+         *
+         * @return string
+         */
+        protected function buildDsn(): string
+        {
+            $s = $this->db_settings;
+
+            return match ($this->driver) {
+                'mysql' => sprintf(
+                    "mysql:host=%s;port=%d;dbname=%s;charset=%s",
+                    $s->server ?? $s->host ?? 'localhost',
+                    $s->port ?? 3306,
+                    $s->schema ?? $s->database ?? '',
+                    $s->charset ?? 'utf8mb4'
+                ),
+
+                'pgsql' => sprintf(
+                    "pgsql:host=%s;port=%d;dbname=%s",
+                    $s->server ?? $s->host ?? 'localhost',
+                    $s->port ?? 5432,
+                    $s->schema ?? $s->database ?? ''
+                ),
+
+                'sqlsrv' => sprintf(
+                    "sqlsrv:Server=%s,%d;Database=%s",
+                    $s->server ?? $s->host ?? 'localhost',
+                    $s->port ?? 1433,
+                    $s->schema ?? $s->database ?? ''
+                ),
+
+                'sqlite' => sprintf(
+                    "sqlite:%s",
+                    $s->path ?? $s->database ?? ':memory:'
+                ),
+
+                'oci' => sprintf(
+                    "oci:dbname=//%s:%d/%s;charset=%s",
+                    $s->server ?? $s->host ?? 'localhost',
+                    $s->port ?? 1521,
+                    $s->schema ?? $s->database ?? '',
+                    $s->charset ?? 'AL32UTF8'
+                ),
+
+                default => throw new \RuntimeException("Unsupported database driver: {$this->driver}")
+            };
+        }
+
+        /**
+         * getOptimizedAttributes - Get optimized PDO attributes
+         *
+         * @return array
+         */
+        protected function getOptimizedAttributes(): array
+        {
+            $base = [
+                \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
+                \PDO::ATTR_DEFAULT_FETCH_MODE => \PDO::FETCH_OBJ,
+                \PDO::ATTR_EMULATE_PREPARES => false,
+            ];
+
+            $driver_attrs = match ($this->driver) {
+                'mysql' => [
+                    \PDO::ATTR_PERSISTENT => true,
+                    \PDO::MYSQL_ATTR_USE_BUFFERED_QUERY => true,
+                    \PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES {$this->db_settings->charset}",
+                ],
+                'pgsql' => [\PDO::ATTR_PERSISTENT => true],
+                'sqlsrv' => [\PDO::SQLSRV_ATTR_ENCODING => \PDO::SQLSRV_ENCODING_UTF8],
+                'sqlite' => [\PDO::ATTR_TIMEOUT => 5],
+                default => []
+            };
+
+            return array_merge($base, $driver_attrs);
+        }
+
+        /**
+         * configureDriver - Post-connection driver configuration
+         *
+         * @return void
+         */
+        protected function configureDriver(): void
+        {
+            if (!$this->db_handle) {
+                return;
+            }
+
+            switch ($this->driver) {
+                case 'mysql':
+                    $charset = $this->db_settings->charset ?? 'utf8mb4';
+                    $collation = $this->db_settings->collation ?? 'utf8mb4_unicode_ci';
+                    $this->db_handle->exec(
+                        "SET NAMES $charset COLLATE $collation, 
+                        CHARACTER SET $charset, 
+                        collation_connection = $collation"
+                    );
+                    break;
+
+                case 'pgsql':
+                    $charset = $this->db_settings->charset ?? 'UTF8';
+                    $this->db_handle->exec("SET NAMES '$charset'");
+                    break;
+
+                case 'sqlite':
+                    $this->db_handle->exec("PRAGMA synchronous = NORMAL");
+                    $this->db_handle->exec("PRAGMA journal_mode = WAL");
+                    $this->db_handle->exec("PRAGMA temp_store = MEMORY");
+                    break;
             }
         }
 
@@ -112,13 +265,13 @@ if (! class_exists('Database')) {
             if (is_array($config)) {
                 $config = (object) $config;
             }
-            
+
             // validate settings before attempting to create instance
             self::validateSettings($config);
-            
+
             // debug logging
             Logger::debug("Database Configure Settings Validated Successfully");
-            
+
             // create and return new instance (validation already done)
             return new self($config);
         }
@@ -144,15 +297,23 @@ if (! class_exists('Database')) {
                 throw new \InvalidArgumentException('Database settings are required.');
             }
 
+            // Get driver
+            $driver = $db_settings->driver ?? 'mysql';
+
+            // Driver-specific validation
+            $required_properties = match ($driver) {
+                'sqlite' => [],
+                default => ['server', 'schema', 'username', 'password']
+            };
+
             // validate required properties exist
-            $required_properties = ['server', 'schema', 'username', 'password', 'charset', 'collation'];
             foreach ($required_properties as $property) {
                 if (!property_exists($db_settings, $property)) {
                     Logger::error("Database Validation Failed - Missing required property", [
                         'missing_property' => $property,
                         'provided_properties' => array_keys(get_object_vars($db_settings))
                     ]);
-                    
+
                     throw new \InvalidArgumentException("Database settings missing required property: {$property}");
                 }
             }
@@ -175,13 +336,13 @@ if (! class_exists('Database')) {
             // try to clean up
             try {
                 // reset
-                $this -> reset();
+                $this->reset();
 
                 // close the connection
-                $this -> db_handle = null;
+                $this->db_handle = null;
 
                 // clear em our
-                unset($this -> db_handle);
+                unset($this->db_handle);
 
                 // debug logging
                 Logger::debug("Database Destructor Completed Successfully");
@@ -210,11 +371,11 @@ if (! class_exists('Database')) {
         public function query(string $query): self
         {
 
-            // reset the query builder state
-            $this -> reset();
-
-            // store the query
-            $this -> current_query = $query;
+            // reset the query builder state inline for performance
+            $this->current_query = $query;
+            $this->query_params = [];
+            $this->fetch_mode = \PDO::FETCH_OBJ;
+            $this->fetch_single = false;
 
             // debug logging
             Logger::debug("Database Query Stored Successfully", []);
@@ -244,7 +405,7 @@ if (! class_exists('Database')) {
             }
 
             // store the parameters
-            $this -> query_params = $params;
+            $this->query_params = $params;
 
             // debug logging
             Logger::debug("Database Parameters Bound Successfully", [
@@ -363,6 +524,11 @@ if (! class_exists('Database')) {
                 throw new \RuntimeException('No query has been set. Call query() first.');
             }
 
+            // Ensure connection
+            if (!$this->is_connected) {
+                $this->connect();
+            }
+
             // if limit is provided, determine fetch mode
             if ($limit === 1) {
                 // set the single property
@@ -398,38 +564,23 @@ if (! class_exists('Database')) {
                     return false;
                 }
 
-                // fetch based on mode
-                if ($this -> fetch_single) {
-                    // fetch only one record
-                    $result = $stmt -> fetch($this -> fetch_mode);
+                // fetch based on mode - optimized
+                $result = $this->fetch_single
+                    ? $stmt->fetch($this->fetch_mode)
+                    : $stmt->fetchAll($this->fetch_mode);
 
-                    // close the cursor
-                    $stmt -> closeCursor();
+                // close the cursor
+                $stmt->closeCursor();
 
-                    // debug logging
-                    Logger::debug("Database Single Record Fetched", [
-                        'has_result' => ! empty($result),
-                        'result_type' => gettype($result)
-                    ]);
+                // debug logging
+                Logger::debug($this->fetch_single ? "Database Single Record Fetched" :
+                    "Database Multiple Records Fetched", [
+                    'has_result' => !empty($result),
+                    'result_count' => is_array($result) ? count($result) : 0
+                ]);
 
-                    // return the result
-                    return ! empty($result) ? $result : false;
-                } else {
-                    // fetch all records
-                    $results = $stmt -> fetchAll($this -> fetch_mode);
-
-                    // close the cursor
-                    $stmt -> closeCursor();
-
-                    // debug logging
-                    Logger::debug("Database Multiple Records Fetched", [
-                        'has_results' => ! empty($results),
-                        'result_count' => is_array($results) ? count($results) : 0
-                    ]);
-
-                    // return the resultset
-                    return ! empty($results) ? $results : false;
-                }
+                // return the result
+                return !empty($result) ? $result : false;
 
             // whoopsie...
             } catch (\Exception $e) {
@@ -463,6 +614,11 @@ if (! class_exists('Database')) {
 
                 // throw an exception
                 throw new \RuntimeException('No query has been set. Call query() first.');
+            }
+
+            // Ensure connection
+            if (!$this->is_connected) {
+                $this->connect();
             }
 
             // try to execute the query
@@ -577,6 +733,11 @@ if (! class_exists('Database')) {
         public function transaction(): bool
         {
 
+            // Ensure connection
+            if (!$this->is_connected) {
+                $this->connect();
+            }
+
             // try to begin transaction
             try {
                 // begin the transaction
@@ -654,6 +815,23 @@ if (! class_exists('Database')) {
         }
 
         /**
+         * Check if currently in a transaction
+         *
+         * @return bool
+         */
+        public function inTransaction(): bool
+        {
+            try {
+                return $this->db_handle->inTransaction();
+            } catch (\Exception $e) {
+                Logger::error("Database inTransaction Check Error", [
+                    'message' => $e->getMessage()
+                ]);
+                return false;
+            }
+        }
+
+        /**
          * reset
          *
          * Reset the query builder state
@@ -695,7 +873,6 @@ if (! class_exists('Database')) {
          */
         private function bindParams(\PDOStatement $stmt, array $params = []): void
         {
-
             // if we don't have any parameters just return
             if (empty($params)) {
                 Logger::debug("Database Bind Params - No Parameters to Bind");
@@ -704,31 +881,18 @@ if (! class_exists('Database')) {
 
             // try to bind parameters
             try {
-                // loop over the parameters
+                // loop over the parameters - optimized binding
                 foreach ($params as $i => $param) {
-                    // Always bind as string for regex fields
-                    if (is_string($param) && preg_match('/[\[\]{}()*+?.,\\^$|#\s-]/', $param)) {
-                        $stmt -> bindValue($i + 1, $param, \PDO::PARAM_STR);
-
-                        // debug logging
-                        Logger::debug("Database Parameter Bound (Regex String)", [
-                            'index' => $i + 1,
-                            'pdo_type' => 'PDO::PARAM_STR',
-                        ]);
-
-                        continue;
-                    }
-
-                    // match the parameter types
-                    $paramType = match (strtolower(gettype($param))) {
-                        'boolean' => \PDO::PARAM_BOOL,
-                        'integer' => \PDO::PARAM_INT,
-                        'null' => \PDO::PARAM_NULL,
+                    // Optimized type detection using match
+                    $paramType = match (true) {
+                        is_bool($param) => \PDO::PARAM_BOOL,
+                        is_int($param) => \PDO::PARAM_INT,
+                        is_null($param) => \PDO::PARAM_NULL,
                         default => \PDO::PARAM_STR
                     };
 
                     // bind the parameter and value
-                    $stmt -> bindValue($i + 1, $param, $paramType);
+                    $stmt->bindValue($i + 1, $param, $paramType);
 
                     // debug logging
                     Logger::debug("Database Parameter Bound", [
@@ -747,7 +911,7 @@ if (! class_exists('Database')) {
             } catch (\Exception $e) {
                 // error logging
                 Logger::error("Database Bind Params Error", [
-                    'message' => $e -> getMessage(),
+                    'message' => $e->getMessage(),
                 ]);
 
                 throw $e;
@@ -769,6 +933,11 @@ if (! class_exists('Database')) {
          */
         public function raw(string $query, array $params = []): mixed
         {
+
+            // Ensure connection
+            if (!$this->is_connected) {
+                $this->connect();
+            }
 
             // try to execute the raw query
             try {

@@ -2,7 +2,7 @@
 /**
  * Plugin main class
  *
- * @package WP_KPT_Database
+ * @package kp_Database
  */
 
 namespace KPT\WordPress;
@@ -64,9 +64,9 @@ class Plugin {
 	 */
 	public function load_textdomain() {
 		load_plugin_textdomain(
-			'wp-kpt-database',
+			'kp-db',
 			false,
-			dirname( plugin_basename( WP_KPT_DB_PLUGIN_FILE ) ) . '/languages'
+			dirname( plugin_basename( kp_DB_PLUGIN_FILE ) ) . '/languages'
 		);
 	}
 
@@ -74,6 +74,12 @@ class Plugin {
 	 * Replace WordPress wpdb with KPT Database
 	 */
 	public function replace_wpdb() {
+		// Don't replace if we're deactivating
+		if ( defined( 'WP_UNINSTALL_PLUGIN' ) || 
+			( isset( $_GET['action'] ) && $_GET['action'] === 'deactivate' ) ) {
+			return;
+		}
+
 		global $wpdb;
 
 		if ( ! $this->wpdb_replacement ) {
@@ -85,12 +91,13 @@ class Plugin {
 	 * Plugin activation
 	 */
 	public static function activate() {
+
 		// Check PHP version.
 		if ( version_compare( PHP_VERSION, '8.2', '<' ) ) {
-			deactivate_plugins( plugin_basename( WP_KPT_DB_PLUGIN_FILE ) );
+			deactivate_plugins( plugin_basename( kp_DB_PLUGIN_FILE ) );
 			wp_die(
-				esc_html__( 'This plugin requires PHP 8.2 or higher.', 'wp-kpt-database' ),
-				esc_html__( 'Plugin Activation Error', 'wp-kpt-database' ),
+				esc_html__( 'This plugin requires PHP 8.2 or higher.', 'kp-db' ),
+				esc_html__( 'Plugin Activation Error', 'kp-db' ),
 				array( 'back_link' => true )
 			);
 		}
@@ -98,20 +105,20 @@ class Plugin {
 		// Check WordPress version.
 		global $wp_version;
 		if ( version_compare( $wp_version, '6.7', '<' ) ) {
-			deactivate_plugins( plugin_basename( WP_KPT_DB_PLUGIN_FILE ) );
+			deactivate_plugins( plugin_basename( kp_DB_PLUGIN_FILE ) );
 			wp_die(
-				esc_html__( 'This plugin requires WordPress 6.7 or higher.', 'wp-kpt-database' ),
-				esc_html__( 'Plugin Activation Error', 'wp-kpt-database' ),
+				esc_html__( 'This plugin requires WordPress 6.7 or higher.', 'kp-db' ),
+				esc_html__( 'Plugin Activation Error', 'kp-db' ),
 				array( 'back_link' => true )
 			);
 		}
 
 		// Check if KPT Database library is available.
 		if ( ! class_exists( 'KPT\\Database' ) ) {
-			deactivate_plugins( plugin_basename( WP_KPT_DB_PLUGIN_FILE ) );
+			deactivate_plugins( plugin_basename( kp_DB_PLUGIN_FILE ) );
 			wp_die(
-				esc_html__( 'This plugin requires the KPT Database library. Please run composer install.', 'wp-kpt-database' ),
-				esc_html__( 'Plugin Activation Error', 'wp-kpt-database' ),
+				esc_html__( 'This plugin requires the KPT Database library. Please run composer install.', 'kp-db' ),
+				esc_html__( 'Plugin Activation Error', 'kp-db' ),
 				array( 'back_link' => true )
 			);
 		}
@@ -123,9 +130,6 @@ class Plugin {
 	 * Plugin deactivation
 	 */
 	public static function deactivate() {
-		// Deactivation cleanup if needed
-		if ( function_exists( 'flush_rewrite_rules' ) ) {
-			flush_rewrite_rules();
-		}
+		// nothing needed for this...
 	}
 }
