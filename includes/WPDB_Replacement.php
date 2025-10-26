@@ -59,9 +59,31 @@ class WPDB_Replacement extends \wpdb {
 	 * Initialize KPT Database
 	 */
 	private function init_kpt_database() {
-		// Set default collation if empty
-		$collation = defined( 'DB_COLLATE' ) && ! empty( DB_COLLATE ) ? DB_COLLATE : 'utf8mb4_unicode_ci';
+		// Get charset and collation from WordPress config
 		$charset = defined( 'DB_CHARSET' ) && ! empty( DB_CHARSET ) ? DB_CHARSET : 'utf8mb4';
+		$collation = defined( 'DB_COLLATE' ) && ! empty( DB_COLLATE ) ? DB_COLLATE : '';
+		
+		// If no collation is set, use the appropriate default for the charset
+		if ( empty( $collation ) ) {
+			$collation = match ( $charset ) {
+				'utf8mb4' => 'utf8mb4_unicode_ci',
+				'utf8mb3' => 'utf8mb3_unicode_ci',
+				'utf8' => 'utf8_unicode_ci',
+				default => 'utf8mb4_unicode_ci',
+			};
+		}
+		
+		// Validate charset/collation compatibility
+		$collation_prefix = strstr( $collation, '_', true );
+		if ( $collation_prefix !== $charset && $collation_prefix !== false ) {
+			// Use default collation for charset
+			$collation = match ( $charset ) {
+				'utf8mb4' => 'utf8mb4_unicode_ci',
+				'utf8mb3' => 'utf8mb3_unicode_ci',
+				'utf8' => 'utf8_unicode_ci',
+				default => 'utf8mb4_unicode_ci',
+			};
+		}
 		
 		$db_settings = (object) array(
 			'server'    => DB_HOST,
@@ -91,7 +113,6 @@ class WPDB_Replacement extends \wpdb {
 			);
 		}
 	}
-
 	/**
 	 * Replace global wpdb
 	 */

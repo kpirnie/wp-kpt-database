@@ -57,7 +57,6 @@ class Plugin {
 	private function init_hooks() {
 		add_action( 'init', array( $this, 'load_textdomain' ) );
 		add_action( 'init', array( $this, 'replace_wpdb' ), 0 );
-		add_filter( 'plugin_action_links_' . plugin_basename( WP_KPT_DB_PLUGIN_FILE ), array( $this, 'add_action_links' ) );
 	}
 
 	/**
@@ -80,19 +79,6 @@ class Plugin {
 		if ( ! $this->wpdb_replacement ) {
 			$this->wpdb_replacement = new WPDB_Replacement( $wpdb );
 		}
-	}
-
-	/**
-	 * Add plugin action links
-	 *
-	 * @param array $links Existing links.
-	 * @return array Modified links.
-	 */
-	public function add_action_links( $links ) {
-		$plugin_links = array(
-			'<a href="' . admin_url( 'options-general.php?page=wp-kpt-database' ) . '">' . esc_html__( 'Settings', 'wp-kpt-database' ) . '</a>',
-		);
-		return array_merge( $plugin_links, $links );
 	}
 
 	/**
@@ -137,6 +123,9 @@ class Plugin {
 	 * Plugin deactivation
 	 */
 	public static function deactivate() {
-		flush_rewrite_rules();
+		// Deactivation cleanup if needed
+		if ( function_exists( 'flush_rewrite_rules' ) ) {
+			flush_rewrite_rules();
+		}
 	}
 }
