@@ -51,6 +51,11 @@ if( ! class_exists( 'KPTDB_Replacement' ) ) {
 			'cached' => 0,
 			'executed' => 0,
 		];
+
+		/**
+		 * Track recent queries to prevent duplicates
+		 */
+		private array $recent_queries = [];
 		
 		/**
 		 * Constructor
@@ -510,6 +515,12 @@ if( ! class_exists( 'KPTDB_Replacement' ) ) {
 				}
 			}
 
+			// check if it's a duplicate query
+			if ( $this->is_duplicate_query( $query ) ) {
+				// Return the last result for this duplicate query
+				return $this->last_result;
+			}
+
 			// flush out previous queries
 			$this -> flush( );
 
@@ -781,6 +792,65 @@ if( ! class_exists( 'KPTDB_Replacement' ) ) {
 				'cached_queries' => $this -> query_stats['cached'] ?? 0,
 				'total_queries' => $this -> query_stats['total'] ?? 0,
 			] );
+		}
+
+		/**
+		 * Optimize autoloaded options
+		 */
+		public function optimize_autoload() : void {
+			if ( is_admin() ) {
+				return;
+			}
+			
+			// Get all autoloaded options in one query
+			$alloptions = wp_load_alloptions();
+			
+			// Pre-cache them individually for faster access
+			foreach ( $alloptions as $option => $value ) {
+				wp_cache_set( $option, $value, 'options' );
+			}
+			
+			// Mark that we've preloaded
+			wp_cache_set( 'alloptions_preloaded', true, 'options', 3600 );
+			
+			Logger::debug( 'Autoloaded options optimized', [
+				'count' => count( $alloptions )
+			] );
+		}
+
+		/**
+		 * Check if query was recently executed
+		 */
+		private function is_duplicate_query( string $query ) : bool {
+			if ( is_admin() ) {
+				return false;
+			}
+			
+			// Generate query signature
+			$signature = md5( $query );
+			
+			// Check if we've run this exact query in the last 100 queries
+			if ( isset( $this->recent_queries[ $signature ] ) ) {
+				$last_run = $this->recent_queries[ $signature ];
+				
+				// If run within last second, it's likely a duplicate
+				if ( time() - $last_run < 1 ) {
+					Logger::debug( 'Duplicate query prevented', [
+						'query_hash' => $signature
+					] );
+					return true;
+				}
+			}
+			
+			// Track this query
+			$this->recent_queries[ $signature ] = time();
+			
+			// Keep only last 100 queries
+			if ( count( $this->recent_queries ) > 100 ) {
+				array_shift( $this->recent_queries );
+			}
+			
+			return false;
 		}
 		
 	}

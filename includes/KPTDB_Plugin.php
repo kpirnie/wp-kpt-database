@@ -87,6 +87,14 @@ if( ! class_exists( 'KPTDB_Plugin' ) ) {
 
 			if ( ! $this->wpdb_replacement ) {
 				$this->wpdb_replacement = new KPTDB_Replacement( $wpdb );
+				
+				// Initialize query optimizer (non-head related)
+				KPTDB_Query_Optimizer::init();
+				
+				// Optimize autoloaded options
+				if ( ! is_admin() ) {
+					$this->wpdb_replacement->optimize_autoload();
+				}
 			}
 		}
 
