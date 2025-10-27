@@ -516,9 +516,9 @@ if( ! class_exists( 'KPTDB_Replacement' ) ) {
 			}
 
 			// check if it's a duplicate query
-			if ( $this->is_duplicate_query( $query ) ) {
-				// Return the last result for this duplicate query
-				return $this->last_result;
+			if ( $this -> is_duplicate_query( $query ) ) {
+				// return the number of rows
+				return $this -> num_rows;
 			}
 
 			// flush out previous queries

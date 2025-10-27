@@ -6,11 +6,6 @@ A WordPress plugin that replaces the core WordPress database interaction layer (
 
 This plugin seamlessly integrates the KPT Database library into WordPress, replacing all `wpdb` database interactions with a more modern, secure, and feature-rich PDO-based solution while maintaining full backward compatibility with WordPress core and plugins. 
 
-**New Features:**
-- **Query Caching**: Intelligent caching system that reduces database load by 30-50%
-- **Query Optimization**: Reduces total queries per page load by up to 40%
-- **Performance Monitoring**: Built-in query statistics and performance tracking
-
 ## Features
 
 ### Core Features
@@ -22,6 +17,9 @@ This plugin seamlessly integrates the KPT Database library into WordPress, repla
 - **Performance**: Optimized database operations with query caching
 - **WordPress Coding Standards**: Fully compliant with WordPress coding standards
 - **Debug Logging**: Integrated with WordPress debug logging system
+- **Query Caching**: Intelligent caching system that reduces database load by 30-50%
+- **Query Optimization**: Reduces total queries per page load by up to 40%
+- **Performance Monitoring**: Built-in query statistics and performance tracking
 
 ### Performance Features (New!)
 
@@ -59,11 +57,6 @@ This plugin seamlessly integrates the KPT Database library into WordPress, repla
 
 ## Installation
 
-### Via Composer (Recommended)
-```bash
-composer require kevinpirnie/wp-kpt-database
-```
-
 ### Manual Installation
 
 1. Download the plugin
@@ -82,15 +75,6 @@ The plugin automatically uses your WordPress database configuration from `wp-con
 Add these constants to your `wp-config.php` for fine-tuning:
 
 ```php
-// Enable query caching (default: true)
-define( 'KP_DB_CACHE_ENABLED', true );
-
-// Cache TTL in seconds (default: 3600)
-define( 'KP_DB_CACHE_TTL', 3600 );
-
-// Only cache on frontend (default: true)
-define( 'KP_DB_CACHE_FRONTEND_ONLY', true );
-
 // Enable WordPress object cache
 define( 'WP_CACHE', true );
 
@@ -115,36 +99,6 @@ Debug logs will be written to `wp-content/debug.log`.
 
 Once activated, the plugin automatically replaces all WordPress database interactions. No code changes are required in your themes or plugins.
 
-### Query Statistics (Debug Mode)
-
-When `WP_DEBUG` is enabled, query statistics appear in HTML comments at the bottom of your pages:
-
-```html
-<!-- KP DB Stats: Total: 45, Cached: 32, Executed: 13 -->
-```
-
-### Monitoring Performance
-
-Add this to your theme's `footer.php` to monitor detailed query performance:
-
-```php
-<?php if ( WP_DEBUG && current_user_can( 'manage_options' ) ) : ?>
-<!-- 
-Queries: <?php echo get_num_queries(); ?> 
-Time: <?php timer_stop(1); ?> seconds
-DB Cache Hit Rate: <?php 
-    global $wpdb;
-    if ( method_exists( $wpdb, 'get_query_stats' ) ) {
-        $stats = $wpdb->get_query_stats();
-        if ( $stats['total'] > 0 ) {
-            echo round( ( $stats['cached'] / $stats['total'] ) * 100, 2 ) . '%';
-        }
-    }
-?>
--->
-<?php endif; ?>
-```
-
 ## Performance Improvements
 
 ### Typical Performance Gains
@@ -159,7 +113,6 @@ DB Cache Hit Rate: <?php
 | Optimization | Queries Saved | Impact |
 |--------------|---------------|---------|
 | Archive page optimization | 10-15 queries | Removes SQL_CALC_FOUND_ROWS |
-| Metadata batching | 5-20 queries | Combines individual meta queries |
 | Widget caching | 10-20 queries | Caches all widget options |
 | Autoload optimization | 5-10 queries | Pre-caches common options |
 | Duplicate prevention | Variable | Prevents redundant queries |
@@ -291,7 +244,7 @@ composer phpstan
 - Input validation and sanitization
 - Secure credential handling
 
-If you discover a security vulnerability, please email me@kpirnie.com.
+If you discover a security vulnerability, please email iam@kevinpirnie.com.
 
 ## Known Limitations
 
@@ -352,7 +305,7 @@ Built on top of the [KPT Database](https://github.com/kpirnie/kp-database) libra
 ## Author
 
 **Kevin Pirnie**
-- Email: me@kpirnie.com
+- Email: iam@kevinpirnie.com
 - GitHub: [@kpirnie](https://github.com/kpirnie)
 
 ## Support

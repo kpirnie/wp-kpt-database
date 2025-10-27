@@ -22,6 +22,7 @@ if( ! class_exists( 'KPTDB_Query_Optimizer ') ) {
          * Initialize query optimizations
          */
         public static function init() {
+            
             // Only optimize on frontend
             if ( is_admin() ) {
                 return;
@@ -30,7 +31,6 @@ if( ! class_exists( 'KPTDB_Query_Optimizer ') ) {
             // Optimize queries
             add_action( 'pre_get_posts', [ __CLASS__, 'optimize_main_query' ], 1 );
             add_filter( 'posts_request', [ __CLASS__, 'optimize_post_queries' ], 10, 2 );
-            add_filter( 'update_post_metadata_cache', [ __CLASS__, 'batch_metadata_queries' ], 10, 2 );
             
             // Prevent duplicate queries
             add_filter( 'posts_clauses', [ __CLASS__, 'prevent_count_queries' ], 10, 2 );
@@ -55,16 +55,17 @@ if( ! class_exists( 'KPTDB_Query_Optimizer ') ) {
                 $query->set( 'no_found_rows', true );
             }
             
-            // Don't fetch full post content on archives
+            // set the fields to be selected and not just *
             if ( is_archive() || is_home() || is_search() ) {
                 add_filter( 'posts_fields', function( $fields, $q ) use ( $query ) {
                     if ( $q === $query ) {
                         global $wpdb;
-                        // Only get essential fields, not post_content
+
+                        // Only get essential fields
                         $fields = "$wpdb->posts.ID, $wpdb->posts.post_author, $wpdb->posts.post_date, 
                                 $wpdb->posts.post_title, $wpdb->posts.post_excerpt, $wpdb->posts.post_status, 
                                 $wpdb->posts.comment_status, $wpdb->posts.post_name, $wpdb->posts.post_modified, 
-                                $wpdb->posts.post_parent, $wpdb->posts.guid, $wpdb->posts.post_type, 
+                                $wpdb->posts.post_parent, $wpdb->posts.guid, $wpdb->posts.post_type, $wpdb->posts.post_content, 
                                 $wpdb->posts.comment_count";
                     }
                     return $fields;
@@ -143,37 +144,6 @@ if( ! class_exists( 'KPTDB_Query_Optimizer ') ) {
             }
             
             return $request;
-        }
-        
-        /**
-         * Batch metadata queries
-         */
-        public static function batch_metadata_queries( $check, $post_ids ) {
-            if ( empty( $post_ids ) ) {
-                return $check;
-            }
-            
-            // Pre-warm meta cache for all posts at once
-            update_meta_cache( 'post', $post_ids );
-            
-            // Also pre-warm author cache
-            global $wpdb;
-            $author_ids = $wpdb->get_col( "
-                SELECT DISTINCT post_author 
-                FROM {$wpdb->posts} 
-                WHERE ID IN (" . implode( ',', array_map( 'intval', $post_ids ) ) . ")"
-            );
-            
-            if ( ! empty( $author_ids ) ) {
-                cache_users( $author_ids );
-            }
-            
-            Logger::debug( 'Metadata batch loaded', [
-                'posts' => count( $post_ids ),
-                'authors' => count( $author_ids )
-            ] );
-            
-            return $check;
         }
         
         /**

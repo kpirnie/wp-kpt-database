@@ -122,25 +122,11 @@ Custom wpdb extensions may require additional compatibility work. Contact suppor
 * PDO integration
 * WordPress 6.7 compatibility
 
-== Upgrade Notice ==
-
-= 0.1.66 =
-Initial release. This plugin requires PHP 8.2 or higher and WordPress 6.7 or higher.
-
 == Performance Configuration ==
 
 Add these constants to your wp-config.php for fine-tuning:
 
-`// Enable query caching (default: true)
-define( 'KP_DB_CACHE_ENABLED', true );
-
-// Cache TTL in seconds (default: 3600)
-define( 'KP_DB_CACHE_TTL', 3600 );
-
-// Only cache on frontend (default: true)
-define( 'KP_DB_CACHE_FRONTEND_ONLY', true );
-
-// Enable WordPress object cache
+`// Enable WordPress object cache
 define( 'WP_CACHE', true );
 
 // Reduce database queries further
@@ -209,5 +195,5 @@ For support, please visit:
 Built on top of the KPT Database library (https://github.com/kpirnie/kp-database).
 
 **Author:** Kevin Pirnie
-**Email:** me@kpirnie.com
+**Email:** iam@kevinpirnie.com
 **GitHub:** @kpirnie
