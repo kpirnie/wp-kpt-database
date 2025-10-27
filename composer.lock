@@ -8,16 +8,16 @@
     "packages": [
         {
             "name": "kevinpirnie/kpt-database",
-            "version": "v1.0.03",
+            "version": "v1.0.04",
             "source": {
                 "type": "git",
                 "url": "https://github.com/kpirnie/kp-database.git",
-                "reference": "1f057625a476dd056efed0524134e315b757808b"
+                "reference": "00f1dfff932e797efdfc0451d9563a274d50baa9"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/kpirnie/kp-database/zipball/1f057625a476dd056efed0524134e315b757808b",
-                "reference": "1f057625a476dd056efed0524134e315b757808b",
+                "url": "https://api.github.com/repos/kpirnie/kp-database/zipball/00f1dfff932e797efdfc0451d9563a274d50baa9",
+                "reference": "00f1dfff932e797efdfc0451d9563a274d50baa9",
                 "shasum": ""
             },
             "require": {
@@ -68,7 +68,7 @@
                     "type": "github"
                 }
             ],
-            "time": "2025-10-26T13:57:30+00:00"
+            "time": "2025-10-27T11:44:53+00:00"
         },
         {
             "name": "kevinpirnie/kpt-logger",
