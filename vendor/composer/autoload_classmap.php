@@ -9,6 +9,6 @@ return array(
     'Composer\\InstalledVersions' => $vendorDir . '/composer/InstalledVersions.php',
     'KPT\\Database' => $vendorDir . '/kevinpirnie/kpt-database/src/Database.php',
     'KPT\\Logger' => $vendorDir . '/kevinpirnie/kpt-logger/src/Logger.php',
-    'KPT\\WordPress\\Plugin' => $baseDir . '/includes/Plugin.php',
-    'KPT\\WordPress\\WPDB_Replacement' => $baseDir . '/includes/WPDB_Replacement.php',
+    'KPT\\WordPress\\KPTDB_Plugin' => $baseDir . '/includes/KPTDB_Plugin.php',
+    'KPT\\WordPress\\KPTDB_Replacement' => $baseDir . '/includes/KPTDB_Replacement.php',
 );

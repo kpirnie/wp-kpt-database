@@ -15,14 +15,14 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // make sure the class doesn't already exist
-if( ! class_exists( 'WPDB_Replacement' ) ) {
+if( ! class_exists( 'KPTDB_Replacement' ) ) {
 
 	/**
 	 * WPDB Replacement class
 	 *
 	 * This class extends wpdb and replaces core methods with KPT Database
 	 */
-	class WPDB_Replacement extends \wpdb {
+	class KPTDB_Replacement extends \wpdb {
 
 		/**
 		 * KPT Database instance
@@ -37,6 +37,20 @@ if( ! class_exists( 'WPDB_Replacement' ) ) {
 		 * @var \wpdb
 		 */
 		private $original_wpdb = null;
+
+		/**
+		 * Query cache storage
+		 */
+		private array $query_cache = [];
+
+		/**
+		 * Cache statistics
+		 */
+		private array $query_stats = [
+			'total' => 0,
+			'cached' => 0,
+			'executed' => 0,
+		];
 		
 		/**
 		 * Constructor
@@ -58,6 +72,10 @@ if( ! class_exists( 'WPDB_Replacement' ) ) {
 
 			// Replace global wpdb.
 			$this -> replace_global_wpdb( );
+
+			// Initialize cache clearing hooks
+    		$this -> init_cache_hooks( );
+
 		}
 
 		/**
@@ -377,30 +395,77 @@ if( ! class_exists( 'WPDB_Replacement' ) ) {
 			return preg_replace( '/\([^)]*\)/', '', $type );
 		}
 
+		/**
+		 * Generate cache key for a query
+		 */
+		private function generate_cache_key( string $query ): string {
+			return 'wpdb_' . md5( $query . serialize( $this -> query_params ?? [] ) );
+		}
 
+		/**
+		 * Check if query is cacheable (frontend SELECT queries only)
+		 */
+		private function is_cacheable_query( string $query ): bool {
+			
+			// Only cache on frontend
+			if ( is_admin( ) ) {
+				return false;
+			}
+			
+			// Only cache SELECT queries
+			if ( ! preg_match( '/^SELECT/i', trim( $query ) ) ) {
+				return false;
+			}
+			
+			// Don't cache time-sensitive queries
+			if ( preg_match( '/(RAND|NOW|FOUND_ROWS|SQL_CALC_FOUND_ROWS)\(\)/i', $query ) ) {
+				return false;
+			}
+			
+			return true;
+		}
 
+		/**
+		 * Get cached query result
+		 */
+		private function get_cached_query( string $cache_key ): mixed {
+			
+			// Try object cache first (if available)
+			if ( function_exists( 'wp_cache_get' ) ) {
+				return wp_cache_get( $cache_key, 'wpdb_queries' );
+			}
+			
+			// Fallback to internal cache
+			return $this -> query_cache[ $cache_key ] ?? false;
+		}
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+		/**
+		 * Store query result in cache
+		 */
+		private function cache_query_result( string $query, mixed $result ): void {
+		
+			// generate the cache key
+			$cache_key = $this -> generate_cache_key( $query );
+			
+			// hold the cachable data
+			$cache_data = [
+				'result' => $this -> last_result,
+				'num_rows' => $this -> num_rows,
+				'rows_affected' => $this -> rows_affected,
+				'return_val' => $result,
+			];
+			
+			// Store in object cache if available
+			if ( function_exists( 'wp_cache_set' ) ) {
+				wp_cache_set( $cache_key, $cache_data, 'wpdb_queries', 3600 ); // 1 hour TTL
+			}
+			
+			// Store in internal cache (limit size)
+			if ( count( $this -> query_cache ) > 100 ) {
+				array_shift( $this -> query_cache ); // Remove oldest
+			}
+			$this -> query_cache[ $cache_key ] = $cache_data;
+		}
 
 		/**
 		 * Performs a database query, using current database connection.
@@ -412,31 +477,47 @@ if( ! class_exists( 'WPDB_Replacement' ) ) {
 		 *                  affected/selected for all other queries. Boolean false on error.
 		 */
 		public function query( $query ) : int|bool {
-			
-			// check if we're ready ;)
+    
+			// check if we're ready
 			if ( ! $this -> ready ) {
 				$this -> check_current_query = true;
 				return false;
 			}
 
-			// apply the filter and see if we still have a query after that
+			// apply the filter
 			$query = apply_filters( 'query', $query );
 			if ( ! $query ) {
 				$this -> insert_id = 0;
 				return false;
 			}
 
+			// INCREMENT STATS
+			$this -> query_stats['total']++;
+
+			// CHECK CACHE FIRST (frontend only)
+			if ( $this -> is_cacheable_query( $query ) ) {
+				$cache_key = $this -> generate_cache_key( $query );
+				$cached = $this -> get_cached_query( $cache_key );
+				
+				// if we currently have a cached result... serve it up
+				if ( $cached !== false ) {
+					$this -> query_stats['cached']++;
+					$this -> last_result = $cached['result'];
+					$this -> num_rows = $cached['num_rows'];
+					$this -> rows_affected = $cached['rows_affected'];
+					Logger::debug( 'Query served from cache' );
+					return $cached['return_val'];
+				}
+			}
+
 			// flush out previous queries
 			$this -> flush( );
 
-			// If we're writing to the database, make sure the query will write safely.
+			// If we're writing to the database, make sure the query will write safely
 			if ( $this -> check_current_query && ! $this -> check_ascii( $query ) ) {
-
-				// clean the query and flush again because it can run queries: get_table_charset
 				$stripped_query = $this -> strip_invalid_text_from_query( $query );
 				$this -> flush( );
 				
-				// if the stripped query does not equal our original
 				if ( $stripped_query !== $query ) {
 					$this -> insert_id  = 0;
 					$this -> last_query = $query;
@@ -446,22 +527,22 @@ if( ! class_exists( 'WPDB_Replacement' ) ) {
 				}
 			}
 
-			// set the check flag
 			$this -> check_current_query = true;
-
-			// Keep track of the last query for debug.
 			$this -> last_query = $query;
 
+			// TRACK EXECUTION
+			$this -> query_stats['executed']++;
+			
 			// now actually run the query
 			$this -> _do_query( $query );
 
-			// Database server has gone away, try to reconnect.
+			// Database server has gone away, try to reconnect
 			$mysql_errno = 0;
 			if ( ! $this -> kpt_db ) {
 				$mysql_errno = 2006;
 			}
 			if ( empty( $this -> kpt_db ) || 2006 === $mysql_errno ) {
-				if ( $this -> check_connection( ) ) {
+				if ( $this -> check_connection() ) {
 					$this -> _do_query( $query );
 				} else {
 					$this -> insert_id = 0;
@@ -469,15 +550,12 @@ if( ! class_exists( 'WPDB_Replacement' ) ) {
 				}
 			}
 
-			// clear the last error
 			$this -> last_error = '';
 
 			if ( $this -> last_error ) {
-				// Clear insert_id on a subsequent failed insert.
 				if ( $this -> insert_id && preg_match( '/^\s*(insert|replace)\s/i', $query ) ) {
 					$this -> insert_id = 0;
 				}
-
 				$this -> print_error( );
 				return false;
 			}
@@ -487,24 +565,26 @@ if( ! class_exists( 'WPDB_Replacement' ) ) {
 			} elseif ( preg_match( '/^\s*(insert|delete|update|replace)\s/i', $query ) ) {
 				$this -> rows_affected = $this -> kpt_db -> execute( ) ?: 0;
 
-				// Take note of the insert_id.
 				if ( preg_match( '/^\s*(insert|replace)\s/i', $query ) ) {
 					$this -> insert_id = $this -> kpt_db -> getLastId( ) ?: 0;
 				}
 
-				// Return number of rows affected.
 				$return_val = $this -> rows_affected;
 			} else {
-				$result = $this -> kpt_db -> query( $query ) -> fetch( );
+				$result = $this -> kpt_db->query( $query ) -> fetch( );
 				$num_rows = is_array( $result ) ? count( $result ) : 0;
 
 				if ( $result ) {
 					$this -> last_result = $result;
 				}
 
-				// Log and return the number of rows selected.
-				$this->num_rows = $num_rows;
-				$return_val     = $num_rows;
+				$this -> num_rows = $num_rows;
+				$return_val = $num_rows;
+			}
+
+			// CACHE SUCCESSFUL SELECT QUERIES
+			if ( $return_val !== false && $this -> is_cacheable_query( $query ) ) {
+				$this -> cache_query_result( $query, $return_val );
 			}
 
 			return $return_val;
@@ -630,6 +710,77 @@ if( ! class_exists( 'WPDB_Replacement' ) ) {
 				
 				return false;
 			}
+		}
+
+		/**
+		 * Initialize cache clearing hooks
+		 * 
+		 * @return void
+		 */
+		private function init_cache_hooks(): void {
+			// Only add hooks if not in admin
+			if ( is_admin() ) {
+				return;
+			}
+			
+			// Clear cache on post changes
+			add_action( 'save_post', [ $this, 'clear_cache' ] );
+			add_action( 'deleted_post', [ $this, 'clear_cache' ] );
+			add_action( 'trash_post', [ $this, 'clear_cache' ] );
+			add_action( 'untrash_post', [ $this, 'clear_cache' ] );
+			
+			// Clear cache on comment changes (affects comment counts)
+			add_action( 'wp_insert_comment', [ $this, 'clear_cache' ] );
+			add_action( 'wp_set_comment_status', [ $this, 'clear_cache' ] );
+			
+			// Clear cache on option changes
+			add_action( 'updated_option', [ $this, 'clear_cache' ] );
+			add_action( 'deleted_option', [ $this, 'clear_cache' ] );
+			add_action( 'added_option', [ $this, 'clear_cache' ] );
+			
+			// Clear cache on term/taxonomy changes
+			add_action( 'created_term', [ $this, 'clear_cache' ] );
+			add_action( 'edited_term', [ $this, 'clear_cache' ] );
+			add_action( 'delete_term', [ $this, 'clear_cache' ] );
+			
+			// Clear cache on user changes
+			add_action( 'profile_update', [ $this, 'clear_cache' ] );
+			add_action( 'user_register', [ $this, 'clear_cache' ] );
+			add_action( 'deleted_user', [ $this, 'clear_cache' ] );
+			
+			// Clear cache on theme switch
+			add_action( 'switch_theme', [ $this, 'clear_cache' ] );
+			
+			// Clear cache on plugin activation/deactivation
+			add_action( 'activated_plugin', [ $this, 'clear_cache' ] );
+			add_action( 'deactivated_plugin', [ $this, 'clear_cache' ] );
+		}
+
+		/**
+		 * Clear the query cache
+		 * 
+		 * @return void
+		 */
+		public function clear_cache(): void {
+			// Clear internal cache
+			$this -> query_cache = [];
+			
+			// Clear object cache group if available
+			if ( function_exists( 'wp_cache_flush_group' ) ) {
+				wp_cache_flush_group( 'wpdb_queries' );
+			} elseif ( function_exists( 'wp_cache_delete' ) ) {
+				// If flush_group isn't available, we'll need to track keys
+				// and delete them individually (less efficient)
+				foreach ( array_keys( $this -> query_cache ) as $key ) {
+					wp_cache_delete( $key, 'wpdb_queries' );
+				}
+			}
+			
+			// Log cache clear
+			Logger::debug( 'Query cache cleared', [
+				'cached_queries' => $this -> query_stats['cached'] ?? 0,
+				'total_queries' => $this -> query_stats['total'] ?? 0,
+			] );
 		}
 		
 	}

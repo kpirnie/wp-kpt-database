@@ -30,8 +30,8 @@ class ComposerStaticInit0abf2924726770c729e6e2ef37debc85
         'Composer\\InstalledVersions' => __DIR__ . '/..' . '/composer/InstalledVersions.php',
         'KPT\\Database' => __DIR__ . '/..' . '/kevinpirnie/kpt-database/src/Database.php',
         'KPT\\Logger' => __DIR__ . '/..' . '/kevinpirnie/kpt-logger/src/Logger.php',
-        'KPT\\WordPress\\Plugin' => __DIR__ . '/../..' . '/includes/Plugin.php',
-        'KPT\\WordPress\\WPDB_Replacement' => __DIR__ . '/../..' . '/includes/WPDB_Replacement.php',
+        'KPT\\WordPress\\KPTDB_Plugin' => __DIR__ . '/../..' . '/includes/KPTDB_Plugin.php',
+        'KPT\\WordPress\\KPTDB_Replacement' => __DIR__ . '/../..' . '/includes/KPTDB_Replacement.php',
     );
 
     public static function getInitializer(ClassLoader $loader)

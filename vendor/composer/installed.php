@@ -3,7 +3,7 @@
         'name' => 'kevinpirnie/wp-kpt-database',
         'pretty_version' => 'dev-main',
         'version' => 'dev-main',
-        'reference' => '7dafaf493d5bda1872c22341e074552889443540',
+        'reference' => 'aadaeb3eb8692fddf0020d3020d5ff7422b77fef',
         'type' => 'wordpress-plugin',
         'install_path' => __DIR__ . '/../../',
         'aliases' => array(),
@@ -31,7 +31,7 @@
         'kevinpirnie/wp-kpt-database' => array(
             'pretty_version' => 'dev-main',
             'version' => 'dev-main',
-            'reference' => '7dafaf493d5bda1872c22341e074552889443540',
+            'reference' => 'aadaeb3eb8692fddf0020d3020d5ff7422b77fef',
             'type' => 'wordpress-plugin',
             'install_path' => __DIR__ . '/../../',
             'aliases' => array(),

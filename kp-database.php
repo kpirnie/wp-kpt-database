@@ -2,7 +2,7 @@
 /**
  * Plugin Name: KP Database
  * Plugin URI: https://github.com/kpirnie/wp-kpt-database
- * Description: Replaces WordPress database interaction with KPT Database library
+ * Description: A WordPress plugin that replaces the core WordPress database interaction layer (`wpdb`) with the modern, fluent KPT Database library built on PDO, featuring advanced query caching and optimization.
  * Version: 0.1.66
  * Requires at least: 6.7
  * Requires PHP: 8.2
@@ -41,12 +41,12 @@ function kp_database_init() {
         defined( 'WP_DEBUG' ) && WP_DEBUG 
     );
 
-	Plugin::get_instance();
+	KPTDB_Plugin::get_instance();
 }
 add_action( 'plugins_loaded', __NAMESPACE__ . '\\kp_database_init', 1 );
 
 // Activation hook.
-register_activation_hook( __FILE__, array( __NAMESPACE__ . '\\Plugin', 'activate' ) );
+register_activation_hook( __FILE__, array( __NAMESPACE__ . '\\KPTDB_Plugin', 'activate' ) );
 
 // Deactivation hook.
-register_deactivation_hook( __FILE__, array( __NAMESPACE__ . '\\Plugin', 'deactivate' ) );
+register_deactivation_hook( __FILE__, array( __NAMESPACE__ . '\\KPTDB_Plugin', 'deactivate' ) );
