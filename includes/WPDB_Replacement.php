@@ -668,14 +668,35 @@ if( ! class_exists( 'WPDB_Replacement' ) ) {
 				
 					// SELECT, SHOW, DESCRIBE queries
 					$result = $this -> kpt_db -> query( $query ) -> fetch( );
-					
-					// Store results for WordPress compatibility
-					$this -> last_result = is_array( $result ) ? $result : ( $result ? [ $result ] : [] );
+
+					// CRITICAL: KPT Database returns false for empty results, convert to empty array
+					if ( $result === false || $result === null ) {
+						$result = [];
+					}
+					// Convert single object to array
+					elseif ( is_object( $result ) && ! is_array( $result ) ) {
+						$result = [ $result ];
+					}
+					// Ensure it's an array
+					elseif ( ! is_array( $result ) ) {
+						$result = [];
+					}
+
+					// Sanitize column names (id -> ID) for WordPress compatibility
+					$this -> last_result = ( $this -> sanitize_column_names( $result ) ) ?: array( );
 					$this -> num_rows = count( $this -> last_result );
-					
+
 					// Log successful select
-					Logger::debug( 'SELECT query executed', [ 'num_rows' => $this -> num_rows ] );
-					
+					// DEBUG: Log what we actually got back
+					Logger::debug( 'KPT Database fetch result [POST]', [ 
+						'result_type' => gettype( $result ),
+						'result_is_false' => $result === false,
+						'result_is_array' => is_array( $result ),
+						'result_count' => is_array( $result ) ? count( $result ) : 'N/A',
+						'query_snippet' => substr( $query, 0, 200 )
+					] );
+					//exit;
+
 					return $this -> num_rows;
 					
 				} else {
@@ -720,7 +741,48 @@ if( ! class_exists( 'WPDB_Replacement' ) ) {
 				return false;
 			}
 		}
-		
+
+		/**
+		 * Sanitize column names to match WordPress expectations
+		 * Add both 'id' and 'ID' properties for maximum compatibility
+		 * 
+		 * @param array|object|false $result Query result from KPT Database
+		 * @return array Sanitized result
+		 */
+		private function sanitize_column_names( $result ) {
+			if ( $result === false ) {
+				return [];
+			}
+			
+			// Handle single object - convert to array
+			if ( is_object( $result ) && ! is_array( $result ) ) {
+				$result = [ $result ];
+			}
+			
+			// If not array at this point, return empty
+			if ( ! is_array( $result ) ) {
+				return [];
+			}
+			
+			// Process each row
+			$sanitized = [];
+			foreach ( $result as $row ) {
+				if ( is_object( $row ) ) {
+					// Check if it has 'id' but not 'ID'
+					if ( isset( $row->id ) && ! isset( $row->ID ) ) {
+						$row->ID = $row->id;
+					}
+					// Check if it has 'ID' but not 'id'
+					elseif ( isset( $row->ID ) && ! isset( $row->id ) ) {
+						$row->id = $row->ID;
+					}
+				}
+				$sanitized[] = $row;
+			}
+			
+			return $sanitized;
+		}
+
 		/**
 		 * Internal function to perform the mysql_query() call
 		 *
@@ -1152,7 +1214,7 @@ if( ! class_exists( 'WPDB_Replacement' ) ) {
 			// If no results from last query, return null
 			if ( ! $this->last_result ) {
 				Logger::debug( 'get_results: no results available' );
-				return null;
+				return array( );
 			}
 			
 			// Log results retrieval
@@ -1201,7 +1263,7 @@ if( ! class_exists( 'WPDB_Replacement' ) ) {
 					'output' => $output
 				] );
 				
-				return null;
+				return array( );
 			}
 		}
 		
@@ -1228,7 +1290,8 @@ if( ! class_exists( 'WPDB_Replacement' ) ) {
 			}
 			
 			// If no results from last query, return null
-			if ( ! $this->last_result ) {
+			// Check for empty array explicitly, not just falsy check
+			if ( empty( $this->last_result ) || ! is_array( $this->last_result ) ) {
 				Logger::debug( 'get_row: no results available' );
 				return null;
 			}
@@ -1297,7 +1360,7 @@ if( ! class_exists( 'WPDB_Replacement' ) ) {
 			}
 			
 			// If no results from last query, return empty array
-			if ( ! $this->last_result ) {
+			if ( empty( $this -> last_result ) || ! is_array( $this -> last_result ) ) {
 				Logger::debug( 'get_col: no results available' );
 				return array();
 			}
@@ -1364,7 +1427,7 @@ if( ! class_exists( 'WPDB_Replacement' ) ) {
 			}
 			
 			// If no results from last query, return null
-			if ( ! $this->last_result ) {
+			if ( empty( $this->last_result ) || ! is_array( $this->last_result ) ) {
 				Logger::debug( 'get_var: no results available' );
 				return null;
 			}

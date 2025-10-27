@@ -34,7 +34,13 @@ if ( file_exists( KP_DB_PLUGIN_DIR . 'vendor/autoload.php' ) ) {
 
 // Initialize the plugin.
 function kp_database_init() {
-	// Initialize logger
+	
+	// Initialize logger based on WP_DEBUG
+    new \KPT\Logger( 
+        defined( 'WP_DEBUG' ) && WP_DEBUG, 
+        defined( 'WP_DEBUG' ) && WP_DEBUG 
+    );
+
 	Plugin::get_instance();
 }
 add_action( 'plugins_loaded', __NAMESPACE__ . '\\kp_database_init', 1 );

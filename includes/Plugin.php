@@ -123,7 +123,6 @@ class Plugin {
 			);
 		}
 
-		flush_rewrite_rules();
 	}
 
 	/**
